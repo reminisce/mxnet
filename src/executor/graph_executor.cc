@@ -431,7 +431,7 @@ Graph GraphExecutor::InitGraph(nnvm::Symbol symbol,
   const auto& vstorage_type = g.GetAttr<nnvm::StorageTypeVector>("storage_type");
   int dispatch_storage_type = common::GetDispatchStorageType(vstorage_type);
   g.attrs["dispatch_storage_type"] = std::make_shared<dmlc::any>(std::move(dispatch_storage_type));
-  std::cout << "S - dispatch_storage_type: " << dispatch_storage_type << std::endl;
+  // std::cout << "S - dispatch_storage_type: " << dispatch_storage_type << std::endl;
   {
     // memory allocator
     const int kBadStorageID = -1;
@@ -505,7 +505,7 @@ void GraphExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
       data_entry_[idx.entry_id(nid, 0)] =
         NDArray((NDArrayStorageType)storage_type, vshape[eid], data_context[eid], true, vdtype[eid]);
     } else {*/
-      std::cout << "Densee NDArray for head gradient " << idx.entry_id(nid, 0) << std::endl;
+      // std::cout << "Densee NDArray for head gradient " << idx.entry_id(nid, 0) << std::endl;
       data_entry_[idx.entry_id(nid, 0)] =
         NDArray(vshape[eid], data_context[eid], false, vdtype[eid]);
     // }
@@ -524,7 +524,7 @@ void GraphExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
     if (info.bytes == 0) {
       info = PoolEntry{data_context[i], bytes, data_storage_type[i], id_maps[i]};
     } else {
-      std::cout << "WARNING Updated info.bytes" << std::endl;
+      // std::cout << "WARNING Updated info.bytes" << std::endl;
       info.bytes = std::max(info.bytes, bytes);
     }
   }
@@ -595,10 +595,10 @@ void GraphExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
       auto storage_type = (NDArrayStorageType) vstorage_type[i];
       if (storage_type != kDefaultStorage) {
         data_entry_[i] = NDArray(storage_type, vshape[i], vctx[i]);
-        std::cout << "Sparse NDArray " << i << " " << data_entry_[i].var() << "\n";
+        // std::cout << "Sparse NDArray " << i << " " << data_entry_[i].var() << "\n";
       } else {
         data_entry_[i] = NDArray(vshape[i], vctx[i]);
-        std::cout << "Densee NDArray " << i << " " << data_entry_[i].var() <<  std::endl;
+        // std::cout << "Densee NDArray " << i << " " << data_entry_[i].var() <<  std::endl;
       }
     }
   }
@@ -626,9 +626,12 @@ void GraphExecutor::InitCachedOps() {
   // setup the array and requirements.
   for (uint32_t nid = 0; nid < idx.num_nodes(); ++nid) {
     const auto& inode = idx[nid];
-    //std::cout << "node " << nid << " storage_type = " << vstorage_type[nid] << " ";
-    if (inode.source->is_variable()) { std::cout << "var" << std::endl; continue;}
-    //else { std::cout << inode.source->attrs.op->name << std::endl;}
+    // std::cout << "node " << nid << " storage_type = " << vstorage_type[nid] << " ";
+    if (inode.source->is_variable()) {
+      // std::cout << "var" << std::endl;
+      continue;
+    }
+    // else { std::cout << inode.source->attrs.op->name << std::endl;}
 #if MXNET_USE_PROFILER
     op_nodes_[nid].opr_name = inode.source->op()->name.c_str();
 #else
@@ -651,7 +654,7 @@ void GraphExecutor::InitCachedOps() {
       uint32_t eid = idx.entry_id(nid, index);
       exec->out_array.push_back(data_entry_[eid]);
       if (dispatch_storage_type != kDefaultStorage) {
-        //FIXME
+        // FIXME
         exec->req.push_back(kWriteTo);
       } else {
         if (addto_entry.at(eid) != 0) {
@@ -706,6 +709,7 @@ void GraphExecutor::InitCachedOps() {
       PROFILER_MESSAGE("SetupExec"));
     auto exec_fun = [exec, is_async, is_gpu] (
         RunContext ctx, Engine::CallbackOnComplete on_complete) {
+      // std::cout << "Running exec_fun" << std::endl;
       if (is_async) {
         exec->op_ctx.async_on_complete = on_complete;
       }
