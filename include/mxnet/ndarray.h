@@ -175,6 +175,22 @@ class NDArray {
     CHECK(ptr_ != nullptr);
     return ptr_->storage_shape;
   }
+
+  /*!
+   * \brief For sparse operations, the storage shape is an estimated value
+   * in the beginning for allocating enough capacity for the final result.
+   * After the operation is done, the exact size of the shape is known
+   * and need to be reset using this function. For example, adding
+   * two CSRs with nnz1 and nnz2 as their numbers of non-zero values, respectively,
+   * would allocate the array of size nnz1+nnz2 first and get the final
+   * nnz that is smaller than nnz1+nnz2. Therefore, the storage shape's size
+   * needs to be shrunk from nnz1+nnz2 to nnz.
+   */
+  inline void set_storage_shape(const TShape& sshape) {
+    CHECK(storage_type() != kDefaultStorage);
+    ptr_->storage_shape = sshape;
+  }
+
   /*!
    * \return the shape of aux data at ith index. If it doesn't exist, return an empty one.
    */
@@ -184,9 +200,18 @@ class NDArray {
     if (i >= ptr_->aux_shapes.size()) return TShape();
     return ptr_->aux_shapes[i];
   }
+
+  /*!
+   * \brief For a sparse operation on a csr matrix for example,
+   * the size of the column index array
+   * is an estimated value in the beginning for allocating enough capacity
+   * for the final result. After the operation is done, the exact size of
+   * the shape is known and need to be reset using this function.
+   */
   inline void SetAuxShape(size_t i, const TShape& shape) const {
     ptr_->aux_shapes[i] = shape;
   }
+
   /*!
    * \return the data TBlob
    */

@@ -124,24 +124,50 @@ void BinaryOp(const NDArray &lhs,
   // redirect everything to mshadow operations
   switch (lhs.ctx().dev_mask()) {
     case cpu::kDevMask: {
-      Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
-          ret.CheckAndAlloc();
-          TBlob tmp = ret.data();
-          ndarray::Eval<cpu, OP>(lhs.data(), rhs.data(), &tmp, ctx);
-        }, lhs.ctx(), const_vars, {ret.var()},
-        FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+      if (lhs.storage_type() == kDefaultStorage && rhs.storage_type() == kDefaultStorage) {
+        Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
+            ret.CheckAndAlloc();
+            TBlob tmp = ret.data();
+            ndarray::Eval<cpu, OP>(lhs.data(), rhs.data(), &tmp, ctx);
+          }, lhs.ctx(), const_vars, {ret.var()},
+          FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+      } else if (lhs.storage_type() == rhs.storage_type()) {
+        Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
+            ret.CheckAndAlloc();
+            // variable captured by value is const
+            // need to use tmp as a delegate
+            NDArray tmp = ret;
+            ndarray::Eval<cpu, OP>(lhs, rhs, &tmp, ctx);
+          }, lhs.ctx(), const_vars, {ret.var()},
+          FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+      } else {
+        LOG(FATAL) << "storage types of lhs and rhs must be same";
+      }
       break;
     }
 #if MXNET_USE_CUDA
     case gpu::kDevMask: {
-      Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
-          ret.CheckAndAlloc();
-          TBlob tmp = ret.data();
-          ndarray::Eval<gpu, OP>(lhs.data(), rhs.data(), &tmp, ctx);
-          // Wait GPU kernel to complete
-          ctx.get_stream<gpu>()->Wait();
-        }, lhs.ctx(), const_vars, {ret.var()},
-        FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+      if (lhs.storage_type() == kDefaultStorage && rhs.storage_type() == kDefaultStorage) {
+        Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
+            ret.CheckAndAlloc();
+            TBlob tmp = ret.data();
+            ndarray::Eval<gpu, OP>(lhs.data(), rhs.data(), &tmp, ctx);
+            // Wait GPU kernel to complete
+            ctx.get_stream<gpu>()->Wait();
+          }, lhs.ctx(), const_vars, {ret.var()},
+          FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+      } else if (lhs.storage_type() == rhs.storage_type()) {
+        Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
+            ret.CheckAndAlloc();
+            NDArray tmp = ret;
+            ndarray::Eval<gpu, OP>(lhs, rhs, &tmp, ctx);
+            // Wait GPU kernel to complete
+            ctx.get_stream<gpu>()->Wait();
+          }, lhs.ctx(), const_vars, {ret.var()},
+          FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+      } else {
+        LOG(FATAL) << "storage types of lhs and rhs must be same";
+      }
       break;
     }
 #endif

@@ -7,24 +7,33 @@
 #define MXNET_NDARRAY_NDARRAY_FUNCTION_INL_H_
 
 #include <vector>
+#include <mxnet/ndarray.h>
 #include "./ndarray_function.h"
 // this file will be included twice by CPU and GPU
 // macro to help specialize evaluation function
 
 #ifndef DECL_TERNARY
-#define DECL_TERNARY(XPU, OP, FUN)                                       \
-  template<>                                                            \
-  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &mhs, \
+#define DECL_TERNARY(XPU, OP, FUN)                                                     \
+  template<>                                                                           \
+  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &mhs,                               \
                                        const TBlob &rhs, TBlob *ret, RunContext ctx) { \
-    FUN<XPU, OP>(lhs, mhs, rhs, ret, ctx);                                   \
+    FUN<XPU, OP>(lhs, mhs, rhs, ret, ctx);                                             \
   }
 #endif
 
 #ifndef DECL_BINARY
-#define DECL_BINARY(XPU, OP, FUN)                                       \
-  template<>                                                            \
-  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &rhs, TBlob *ret, RunContext ctx) { \
-    FUN<XPU, OP>(lhs, rhs, ret, ctx);                                   \
+#define DECL_BINARY(XPU, OP, FUN)                                                            \
+  template<>                                                                                 \
+  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &rhs, TBlob *ret, RunContext ctx) {       \
+    FUN<XPU, OP>(lhs, rhs, ret, ctx);                                                        \
+  }
+#endif
+
+#ifndef DECL_BINARY_SPARSE
+#define DECL_BINARY_SPARSE(XPU, OP, FUN)                                                     \
+  template<>                                                                                 \
+  void Eval<XPU, OP>(const NDArray& lhs, const NDArray& rhs, NDArray* ret, RunContext ctx) { \
+    FUN<XPU, OP>(lhs, rhs, ret, ctx);                                                        \
   }
 #endif
 
@@ -44,6 +53,25 @@
 
 namespace mxnet {
 namespace ndarray {
+
+#define NDARRAY_IDX_TYPE_SWITCH(type, DType, ...)   \
+  switch (type) {                                   \
+  case mshadow::kUint8:                             \
+    {                                               \
+      typedef uint8_t DType;                        \
+      {__VA_ARGS__}                                 \
+    }                                               \
+    break;                                          \
+  case mshadow::kInt32:                             \
+    {                                               \
+      typedef int32_t DType;                        \
+      {__VA_ARGS__}                                 \
+    }                                               \
+    break;                                          \
+  default:                                          \
+    LOG(FATAL) << "Unknown idx type enum " << type; \
+  }
+
 // true implementation
 template<typename xpu, typename OP>
 inline void EvalBinary_(const TBlob &lhs, const TBlob &rhs,
@@ -61,6 +89,124 @@ inline void EvalBinary_(const TBlob &lhs, const TBlob &rhs,
   });
 }
 
+template<typename xpu, typename OP>
+inline void EvalBinaryCsrOpCsr(const NDArray& lhs, const NDArray& rhs,
+                               NDArray* ret, RunContext ctx) {
+  // TODO(junwu): use enum to get indptr, col idx, etc.
+  NDARRAY_IDX_TYPE_SWITCH(lhs.aux_type(0), IType, {  // indptr data type
+    NDARRAY_IDX_TYPE_SWITCH(lhs.aux_type(1), CType, {  // col idx data type
+      MSHADOW_TYPE_SWITCH(lhs.data().type_flag_, DType, {  // ndarray data type
+        const index_t num_rows = lhs.shape()[0];  // number of rows
+        index_t left_nnz = lhs.data().Size();  // number of non-zeros of the left
+        const IType* left_indptr = lhs.aux_data(0).dptr<IType>();  // len = num_rows + 1
+        const CType* left_col_idx = lhs.aux_data(1).dptr<CType>();  // len = left_nnz
+        const DType* left_values = lhs.data().dptr<DType>();  // len = left_nnz
+
+        index_t right_nnz = rhs.data().Size();  // number of non-zeros of the right
+        const IType* right_indptr = rhs.aux_data(0).dptr<IType>();  // len = num_rows + 1
+        const CType* right_col_idx = rhs.aux_data(1).dptr<CType>();  // len = right_nnz
+        const DType* right_values = rhs.data().dptr<DType>();  // len = right_nnz
+
+        // TODO(junwu): verify this has been done correctly for csr
+        ret->CheckAndAlloc({TShape({num_rows+1}), TShape({left_nnz+right_nnz})});
+        // Note: ret_nnz <= left_nnz + right_nnz
+        IType* ret_indptr = ret->aux_data(0).dptr<IType>();  // len = num_rows+1
+        CType* ret_col_idx = ret->aux_data(1).dptr<CType>();  // len = ret_nnz
+        DType* ret_values = ret->data().dptr<DType>();  // len = ret_nnz
+
+        auto op_func = OP::mshadow_op::template Map<DType>;
+
+        const DType dtype_zero = static_cast<DType>(0);
+        ret_indptr[0] = 0;
+        for (index_t i = 0; i < num_rows; ++i) {
+          const auto left_nnz_row = left_indptr[i+1] - left_indptr[i];  // num of nnz in i-th row
+          const auto right_nnz_row = right_indptr[i+1] - right_indptr[i];  // num of nnz i-th row
+          if (left_nnz_row == 0 && right_nnz_row == 0) {  // no nnz elements in both rows
+            ret_indptr[i+1] = ret_indptr[i];
+          } else if (left_nnz_row == 0 || right_nnz_row == 0) {  // only one has nnz elements
+            bool has_left_nnz = (0 == right_nnz_row);
+            const IType* indptr = (has_left_nnz? right_indptr : left_indptr);
+            const CType* col_idx = (has_left_nnz? right_col_idx : left_col_idx);
+            const DType* values = (has_left_nnz? right_values : left_values);
+            const auto nnz_row = (has_left_nnz? right_nnz_row : left_nnz_row);
+            ret_indptr[i+1] = ret_indptr[i] + nnz_row;
+            auto k = ret_indptr[i];
+            for (auto j = indptr[i]; j < indptr[i+1]; ++j, ++k) {
+              const DType op_res = (has_left_nnz? op_func(values[j], dtype_zero)
+                                    : op_func(dtype_zero, values[j]));
+              if (op_res == dtype_zero) continue;
+              ret_values[k] = op_res;
+              ret_col_idx[k] = col_idx[j];
+            }
+          } else {  // both have nnz elements
+            IType ret_nnz_row = 0;
+            auto k = ret_indptr[i];
+            auto j1 = left_indptr[i], j2 = right_indptr[i];
+            while (j1 < left_indptr[i+1] && j2 < right_indptr[i+1]) {
+              const auto left_col = left_col_idx[j1];
+              const auto right_col = right_col_idx[j2];
+              if (left_col == right_col) {
+                const DType op_res = op_func(left_values[j1], right_values[j2]);
+                if (op_res == dtype_zero) continue;
+                ret_col_idx[k] = left_col;
+                ret_values[k] = op_res;
+                ++j1; ++j2; ++k;
+              } else if (left_col < right_col) {
+                const DType op_res = op_func(left_values[j1], dtype_zero);
+                if (op_res == dtype_zero) continue;
+                ret_col_idx[k] = left_col;
+                ret_values[k] = op_res;
+                ++j1; ++k;
+              } else {
+                const DType op_res = op_func(dtype_zero, right_values[j2]);
+                if (op_res == dtype_zero) continue;
+                ret_col_idx[k] = right_col;
+                ret_values[k] = op_res;
+                ++j2; ++k;
+              }
+              ++ret_nnz_row;
+            }
+            while (j1 < left_indptr[i+1]) {
+              const DType op_res = op_func(left_values[j1], dtype_zero);
+              if (op_res == dtype_zero) continue;
+              ret_col_idx[k] = left_col_idx[j1];
+              ret_values[k] = op_res;
+              ++j1; ++k;
+              ++ret_nnz_row;
+            }
+            while (j2 < right_indptr[i+1]) {
+              const DType op_res = op_func(dtype_zero, right_values[j2]);
+              if (op_res == dtype_zero) continue;
+              ret_col_idx[k] = right_col_idx[j2];
+              ret_values[k] = op_res;
+              ++j2; ++k;
+              ++ret_nnz_row;
+            }
+            ret_indptr[i+1] = ret_indptr[i] + ret_nnz_row;
+          }
+        }
+
+        // reset shapes of ret.data() and ret.aux_shape(1);
+        // ret.indptr has the same size as lhs and rhs
+        TShape ret_shape(1);
+        ret_shape[0] = ret_indptr[num_rows];
+        ret->set_storage_shape(ret_shape);
+        // TODO(junwu): replace 1 with the column array enum
+        ret->set_aux_shape(1, ret_shape);
+      });
+    });
+  });
+}
+
+template<typename xpu, typename OP>
+inline void EvalBinary_(const NDArray& lhs, const NDArray& rhs,
+                        NDArray* ret, RunContext ctx) {
+  if (lhs.storage_type() == kCSRStorage && rhs.storage_type() == kCSRStorage) {
+    EvalBinaryCsrOpCsr<xpu, OP>(lhs, rhs, ret, ctx);
+  } else {
+    LOG(FATAL) << "Binary sparse op only implemented for csr type";
+  }
+}
 
 template<typename xpu, typename OP>
 inline void EvalOneHot_(const TBlob &index, const TBlob &rhs,
@@ -80,6 +226,13 @@ inline void EvalOneHot_(const TBlob &index, const TBlob &rhs,
                    rhs.shape_[1]);
 }
 
+// TODO(junwu): implement this function
+template<typename xpu, typename OP>
+inline void EvalOneHot_(const NDArray& index, const NDArray& rhs,
+                        NDArray* ret, RunContext ctx) {
+  LOG(FATAL) << "OneHot not implemented for sparse ndarrays";
+}
+
 template<typename xpu, typename OP>
 inline void EvalMatChooseRowElem_(const TBlob &lhs, const TBlob &rhs,
                                   TBlob *ret, RunContext ctx) {
@@ -95,6 +248,13 @@ inline void EvalMatChooseRowElem_(const TBlob &lhs, const TBlob &rhs,
   ret->get<xpu, 1, real_t>(s)
       = mat_choose_row_element(lhs.get<xpu, 2, real_t>(s),
                                rhs.get<xpu, 1, real_t>(s));
+}
+
+// TODO(junwu): implement this function
+template<typename xpu, typename OP>
+inline void EvalMatChooseRowElem_(const NDArray& lhs, const NDArray& rhs,
+                                  NDArray* ret, RunContext ctx) {
+  LOG(FATAL) << "ChooseRowELem not implemented for sparse ndarrays";
 }
 
 template<typename xpu, typename OP>
@@ -126,6 +286,21 @@ inline void EvalScalar_(const TBlob &lhs, const real_t &rhs,
         = F<typename OP::mshadow_op>(lhs.FlatTo2D<xpu, DType>(s), scalar(DType(rhs)));
     });
   }
+}
+
+template<typename xpu, typename OP, bool reverse>
+inline void EvalScalar_(const NDArray& lhs, const real_t &rhs,
+                        NDArray* ret, RunContext ctx) {
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(ret->data().type_flag_, lhs.data().type_flag_)
+    << "Only support input/output with the same data type";
+  // TODO(junwu): use enum to get indptr, col idx, etc.
+  MSHADOW_TYPE_SWITCH(lhs.aux_type(0), IType, {  // indptr data type
+    MSHADOW_TYPE_SWITCH(lhs.aux_type(1), CType, {  // col idx data type
+      MSHADOW_TYPE_SWITCH(lhs.data().type_flag_, DType, {  // ndarray data type
+      });
+    });
+  });
 }
 
 template<>
@@ -426,6 +601,14 @@ DECL_SCALAR(DEVICE, Plus, EvalScalar_, true)
 DECL_SCALAR(DEVICE, Minus, EvalScalar_, true)
 DECL_SCALAR(DEVICE, Mul, EvalScalar_, true)
 DECL_SCALAR(DEVICE, Div, EvalScalar_, true)
+
+DECL_BINARY_SPARSE(DEVICE, MatChooseRowElem, EvalMatChooseRowElem_)
+DECL_BINARY_SPARSE(DEVICE, OneHotEncode, EvalOneHot_)
+DECL_BINARY_SPARSE(DEVICE, Plus, EvalBinary_)
+DECL_BINARY_SPARSE(DEVICE, Minus, EvalBinary_)
+DECL_BINARY_SPARSE(DEVICE, Mul, EvalBinary_)
+DECL_BINARY_SPARSE(DEVICE, Div, EvalBinary_)
+
 // for reverse seq
 DECL_SCALAR(DEVICE, Plus, EvalScalar_, false)
 DECL_SCALAR(DEVICE, Minus, EvalScalar_, false)

@@ -10,6 +10,7 @@
 #include <mshadow/tensor.h>
 #include <mxnet/base.h>
 #include <mxnet/resource.h>
+#include <mxnet/ndarray.h>
 #include <vector>
 #include "../operator/mshadow_op.h"
 
@@ -119,6 +120,9 @@ void Eval(const TBlob &lhs, const TBlob &mhs, const TBlob &rhs, TBlob *ret, RunC
 
 template<typename Device, typename OP>
 void Eval(const TBlob &lhs, const TBlob &rhs, TBlob *ret, RunContext ctx);
+
+template<typename Device, typename OP>
+void Eval(const NDArray& lhs, const NDArray& rhs, NDArray* ret, RunContext ctx);
 
 template<typename Device, typename OP>
 void Eval(const TBlob &src, TBlob *ret, RunContext ctx);
