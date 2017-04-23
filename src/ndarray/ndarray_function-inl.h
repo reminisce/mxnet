@@ -190,9 +190,9 @@ inline void EvalBinaryCsrOpCsr(const NDArray& lhs, const NDArray& rhs,
         // ret.indptr has the same size as lhs and rhs
         TShape ret_shape(1);
         ret_shape[0] = ret_indptr[num_rows];
-        ret->set_storage_shape(ret_shape);
+        ret->SetStorageShape(ret_shape);
         // TODO(junwu): replace 1 with the column array enum
-        ret->set_aux_shape(1, ret_shape);
+        ret->SetAuxShape(1, ret_shape);
       });
     });
   });
