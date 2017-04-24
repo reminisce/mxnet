@@ -482,11 +482,15 @@ inline DotForwardEx(const nnvm::NodeAttrs& attrs,
                     const std::vector<NDArray>& inputs,
                     const std::vector<OpReqType>& req,
                     const std::vector<NDArray>& outputs) {
-
   const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
   Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_NE(req[0], kWriteInplace);
-  CHECK_NE(req[1], kWriteInplace);
+  CHECK_EQ(outputs[0].type_flag_, inputs[0].type_flag_)
+      << "Binary function only support input/output with the same type";
+  CHECK_EQ(outputs[0].type_flag_, inputs[1].type_flag_)
+      << "Binary function only support input/output with the same type";
+  // TODO(junwu): check whether this CHECK_EQ is reasonable
+  CHECK_EQ(outputs[0].type_flag_, kFloat32)
+      << "dot only support 32 bit float so far";
 }
 
 inline bool DotShape(const nnvm::NodeAttrs& attrs,
