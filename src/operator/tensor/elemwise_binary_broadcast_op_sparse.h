@@ -118,6 +118,30 @@ void BinaryBroadcastComputeCsrDense(const nnvm::NodeAttrs& attrs,
   // zero elements after broadcast_xxx
 }
 
+template<typename xpu, typename OP>
+void BinaryBroadcastBackwardCsrDense(const nnvm::NodeAttrs& attrs,
+                                     const OpContext& ctx,
+                                     const std::vector<NDArray>& inputs,
+                                     const std::vector<OpReqType>& req,
+                                     const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 3U);
+  CHECK_EQ(outputs.size(), 2U);
+  const NDArray& ograd = inputs[0];
+  const NDArray& lhs = inputs[1];
+  const NDArray& rhs = inputs[2];
+
+  const NDArray& lgrad = outputs[0];
+  const NDArray& rgrad = outputs[1];
+
+  // if ograd is sparse, the lgrad should be sparse as well
+  CHECK_EQ(ograd.storage_type(), kCSRStorage)
+    << "BinaryBroadcastBackwardCsrDe only supports csr ograd";
+  CHECK_EQ(lhs.storage_type(), kCSRStorage)
+    << "BinaryBroadcastBackwardCsrDe only supports csr lhs";
+  CHECK_EQ(rhs.storage_type(), kDefaultStorage)
+    << "BinaryBroadcastBackwardCsrDe only supports dense rhs";
+}
+
 }  // namespace op
 }  // namespace mxnet
 #endif  // MXNET_OPERATOR_TENSOR_ELEMWISE_BINARY_BROADCAST_OP_SPARSE_H_

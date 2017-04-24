@@ -476,6 +476,15 @@ void DotBackward_(const nnvm::NodeAttrs& attrs,
   }
 }
 
+template<typename xpu>
+inline DotForwardEx(const nnvm::NodeAttrs& attrs,
+                    const OpContext& ctx,
+                    const std::vector<NDArray>& inputs,
+                    const std::vector<OpReqType>& req,
+                    const std::vector<NDArray>& outputs) {
+  // TODO(junwu) implement this
+}
+
 inline bool DotShape(const nnvm::NodeAttrs& attrs,
                      std::vector<TShape> *in_attrs,
                      std::vector<TShape> *out_attrs) {
