@@ -664,14 +664,36 @@ class NDArray {
                               int dtype) {
       // calculate size, perform allocation
       if (delay_alloc) {
-        CHECK_EQ(storage_type, kRowSparseStorage) << "Not yet implemented";
-        // For row sparse, aux_shape indicates the number of rows to allocate
-        auto aux_shape = aux_shapes[0];
-        CHECK_EQ(shape.ndim(), 2) << "High dim RowSparse not yet implemented";
-        CheckAndAllocAuxData(rowsparse::kIdx, aux_shape);
-        TShape storage_shape(shape);
-        storage_shape[0] = aux_shape[0];
-        CheckAndAllocData(storage_shape, dtype);
+        if (kRowSparseStorage == storage_type) {
+          CHECK_EQ(storage_type, kRowSparseStorage) << "Not yet implemented";
+          // For row sparse, aux_shape indicates the number of rows to allocate
+          auto aux_shape = aux_shapes[rowsparse::kIdx];
+          CHECK_EQ(shape.ndim(), 2) << "High dim RowSparse not yet implemented";
+          CheckAndAllocAuxData(rowsparse::kIdx, aux_shape);
+          TShape storage_shape(shape);
+          storage_shape[0] = aux_shape[0];
+          CheckAndAllocData(storage_shape, dtype);
+        } else if (kCSRStorage == storage_type) {
+          CHECK_EQ(aux_shapes.size(), 2U);
+          CHECK_GT(aux_shapes[csr::kIndPtr].Size(), 0U);
+          CHECK_EQ(aux_shapes[csr::kIndPtr].ndim(), 1);
+          CHECK_EQ(aux_shapes[csr::kIdx].ndim(), 1);
+          auto num_rows = aux_shapes[csr::kIndPtr].Size() - 1;
+          auto nnz = aux_shapes[csr::kIdx].Size();
+          auto data_bytes = nnz * mshadow::mshadow_sizeof(dtype);  // data bytes
+          auto indptr_bytes = (num_rows + 1) * mshadow::mshadow_sizeof(
+              aux_types[csr::kIndPtr]);  // indptr bytes
+          auto col_idx_bytes = nnz * mshadow::mshadow_sizeof(
+              aux_types[csr::kIdx]);  // col idx bytes
+          shandle = Storage::Get()->Alloc(data_bytes, ctx);
+          aux_handles.push_back(Storage::Get()->Alloc(indptr_bytes, ctx));
+          aux_handles.push_back(Storage::Get()->Alloc(col_idx_bytes, ctx));
+          delay_alloc = false;
+          this->aux_shapes = aux_shapes;
+          storage_shape = aux_shapes[csr::kIdx];
+        } else {
+          LOG(FATAL) << "Storage type " << storage_type << " not implemented for CheckAndAlloc";
+        }
       }
     }
     inline void CheckAndAllocData(const TShape &shape, int dtype) {
@@ -1060,6 +1082,24 @@ struct NDArrayFunctionReg
  */
 #define MXNET_REGISTER_NDARRAY_FUN(name)                                 \
   DMLC_REGISTRY_REGISTER(::mxnet::NDArrayFunctionReg, NDArrayFunctionReg, name)
+
+#define NDARRAY_IDX_TYPE_SWITCH(type, DType, ...)   \
+  switch (type) {                                   \
+  case mshadow::kUint8:                             \
+    {                                               \
+      typedef uint8_t DType;                        \
+      {__VA_ARGS__}                                 \
+    }                                               \
+    break;                                          \
+  case mshadow::kInt32:                             \
+    {                                               \
+      typedef int32_t DType;                        \
+      {__VA_ARGS__}                                 \
+    }                                               \
+    break;                                          \
+  default:                                          \
+    LOG(FATAL) << "Unknown idx type enum " << type; \
+  }
 
 }  // namespace mxnet
 

@@ -13,35 +13,37 @@
 // macro to help specialize evaluation function
 
 #ifndef DECL_TERNARY
-#define DECL_TERNARY(XPU, OP, FUN)                                                     \
-  template<>                                                                           \
-  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &mhs,                               \
-                                       const TBlob &rhs, TBlob *ret, RunContext ctx) { \
-    FUN<XPU, OP>(lhs, mhs, rhs, ret, ctx);                                             \
+#define DECL_TERNARY(XPU, OP, FUN)                                          \
+  template<>                                                                \
+  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &mhs,                    \
+                     const TBlob &rhs, TBlob *ret, RunContext ctx) {        \
+    FUN<XPU, OP>(lhs, mhs, rhs, ret, ctx);                                  \
   }
 #endif
 
 #ifndef DECL_BINARY
-#define DECL_BINARY(XPU, OP, FUN)                                                            \
-  template<>                                                                                 \
-  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &rhs, TBlob *ret, RunContext ctx) {       \
-    FUN<XPU, OP>(lhs, rhs, ret, ctx);                                                        \
+#define DECL_BINARY(XPU, OP, FUN)                                                      \
+  template<>                                                                           \
+  void Eval<XPU, OP>(const TBlob &lhs, const TBlob &rhs, TBlob *ret, RunContext ctx) { \
+    FUN<XPU, OP>(lhs, rhs, ret, ctx);                                                  \
   }
 #endif
 
 #ifndef DECL_BINARY_SPARSE
-#define DECL_BINARY_SPARSE(XPU, OP, FUN)                                                     \
-  template<>                                                                                 \
-  void Eval<XPU, OP>(const NDArray& lhs, const NDArray& rhs, NDArray* ret, RunContext ctx) { \
-    FUN<XPU, OP>(lhs, rhs, ret, ctx);                                                        \
+#define DECL_BINARY_SPARSE(XPU, OP, FUN)                      \
+  template<>                                                  \
+  void Eval<XPU, OP>(const NDArray& lhs, const NDArray& rhs,  \
+                            NDArray* ret, RunContext ctx) {   \
+    FUN<XPU, OP>(lhs, rhs, ret, ctx);                         \
   }
 #endif
 
 #ifndef DECL_SCALAR
-#define DECL_SCALAR(XPU, OP, FUN, REVERSE)                              \
-  template<>                                                            \
-  void Eval<XPU, OP, REVERSE>(const TBlob &lhs, const real_t &rhs, TBlob *ret, RunContext ctx) { \
-    FUN<XPU, OP, REVERSE>(lhs, rhs, ret, ctx);                          \
+#define DECL_SCALAR(XPU, OP, FUN, REVERSE)                           \
+  template<>                                                         \
+  void Eval<XPU, OP, REVERSE>(const TBlob &lhs, const real_t &rhs,   \
+                                     TBlob *ret, RunContext ctx) {   \
+    FUN<XPU, OP, REVERSE>(lhs, rhs, ret, ctx);                       \
   }
 #endif
 
@@ -54,28 +56,10 @@
 namespace mxnet {
 namespace ndarray {
 
-#define NDARRAY_IDX_TYPE_SWITCH(type, DType, ...)   \
-  switch (type) {                                   \
-  case mshadow::kUint8:                             \
-    {                                               \
-      typedef uint8_t DType;                        \
-      {__VA_ARGS__}                                 \
-    }                                               \
-    break;                                          \
-  case mshadow::kInt32:                             \
-    {                                               \
-      typedef int32_t DType;                        \
-      {__VA_ARGS__}                                 \
-    }                                               \
-    break;                                          \
-  default:                                          \
-    LOG(FATAL) << "Unknown idx type enum " << type; \
-  }
-
 // true implementation
 template<typename xpu, typename OP>
-inline void EvalBinary_(const TBlob &lhs, const TBlob &rhs,
-                        TBlob *ret, RunContext ctx) {
+void EvalBinary_(const TBlob &lhs, const TBlob &rhs,
+                 TBlob *ret, RunContext ctx) {
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   CHECK_EQ(ret->type_flag_, lhs.type_flag_)
@@ -90,8 +74,8 @@ inline void EvalBinary_(const TBlob &lhs, const TBlob &rhs,
 }
 
 template<typename xpu, typename OP>
-inline void EvalBinaryCsrOpCsr(const NDArray& lhs, const NDArray& rhs,
-                               NDArray* ret, RunContext ctx) {
+void EvalBinaryCsrOpCsr(const NDArray& lhs, const NDArray& rhs,
+                        NDArray* ret, RunContext ctx) {
   // TODO(junwu): use enum to get indptr, col idx, etc.
   NDARRAY_IDX_TYPE_SWITCH(lhs.aux_type(0), IType, {  // indptr data type
     NDARRAY_IDX_TYPE_SWITCH(lhs.aux_type(1), CType, {  // col idx data type
@@ -199,8 +183,8 @@ inline void EvalBinaryCsrOpCsr(const NDArray& lhs, const NDArray& rhs,
 }
 
 template<typename xpu, typename OP>
-inline void EvalBinary_(const NDArray& lhs, const NDArray& rhs,
-                        NDArray* ret, RunContext ctx) {
+void EvalBinary_(const NDArray& lhs, const NDArray& rhs,
+                 NDArray* ret, RunContext ctx) {
   if (lhs.storage_type() == kCSRStorage && rhs.storage_type() == kCSRStorage) {
     EvalBinaryCsrOpCsr<xpu, OP>(lhs, rhs, ret, ctx);
   } else {
@@ -209,8 +193,8 @@ inline void EvalBinary_(const NDArray& lhs, const NDArray& rhs,
 }
 
 template<typename xpu, typename OP>
-inline void EvalOneHot_(const TBlob &index, const TBlob &rhs,
-                        TBlob *ret, RunContext ctx) {
+void EvalOneHot_(const TBlob &index, const TBlob &rhs,
+                 TBlob *ret, RunContext ctx) {
   LOG(INFO) << "The operator onehot_encode is deprecated; use one_hot instead.";
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
@@ -228,14 +212,14 @@ inline void EvalOneHot_(const TBlob &index, const TBlob &rhs,
 
 // TODO(junwu): implement this function
 template<typename xpu, typename OP>
-inline void EvalOneHot_(const NDArray& index, const NDArray& rhs,
-                        NDArray* ret, RunContext ctx) {
+void EvalOneHot_(const NDArray& index, const NDArray& rhs,
+                 NDArray* ret, RunContext ctx) {
   LOG(FATAL) << "OneHot not implemented for sparse ndarrays";
 }
 
 template<typename xpu, typename OP>
-inline void EvalMatChooseRowElem_(const TBlob &lhs, const TBlob &rhs,
-                                  TBlob *ret, RunContext ctx) {
+void EvalMatChooseRowElem_(const TBlob &lhs, const TBlob &rhs,
+                           TBlob *ret, RunContext ctx) {
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   // TODO(eric): support mixed type choose, i.e. int index and float rhs.
@@ -252,14 +236,14 @@ inline void EvalMatChooseRowElem_(const TBlob &lhs, const TBlob &rhs,
 
 // TODO(junwu): implement this function
 template<typename xpu, typename OP>
-inline void EvalMatChooseRowElem_(const NDArray& lhs, const NDArray& rhs,
-                                  NDArray* ret, RunContext ctx) {
+void EvalMatChooseRowElem_(const NDArray& lhs, const NDArray& rhs,
+                           NDArray* ret, RunContext ctx) {
   LOG(FATAL) << "ChooseRowELem not implemented for sparse ndarrays";
 }
 
 template<typename xpu, typename OP>
-inline void EvalMatFillRowElem_(const TBlob &lhs, const TBlob &mhs, const TBlob &rhs,
-                                  TBlob *ret, RunContext ctx) {
+void EvalMatFillRowElem_(const TBlob &lhs, const TBlob &mhs, const TBlob &rhs,
+                         TBlob *ret, RunContext ctx) {
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   ret->get<xpu, 2, real_t>(s)
@@ -269,8 +253,8 @@ inline void EvalMatFillRowElem_(const TBlob &lhs, const TBlob &mhs, const TBlob 
 }
 
 template<typename xpu, typename OP, bool reverse>
-inline void EvalScalar_(const TBlob &lhs, const real_t &rhs,
-                        TBlob *ret, RunContext ctx) {
+void EvalScalar_(const TBlob &lhs, const real_t &rhs,
+                 TBlob *ret, RunContext ctx) {
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   CHECK_EQ(ret->type_flag_, lhs.type_flag_)
@@ -289,23 +273,14 @@ inline void EvalScalar_(const TBlob &lhs, const real_t &rhs,
 }
 
 template<typename xpu, typename OP, bool reverse>
-inline void EvalScalar_(const NDArray& lhs, const real_t &rhs,
-                        NDArray* ret, RunContext ctx) {
-  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_EQ(ret->data().type_flag_, lhs.data().type_flag_)
-    << "Only support input/output with the same data type";
-  // TODO(junwu): use enum to get indptr, col idx, etc.
-  MSHADOW_TYPE_SWITCH(lhs.aux_type(0), IType, {  // indptr data type
-    MSHADOW_TYPE_SWITCH(lhs.aux_type(1), CType, {  // col idx data type
-      MSHADOW_TYPE_SWITCH(lhs.data().type_flag_, DType, {  // ndarray data type
-      });
-    });
-  });
+void EvalScalar_(const NDArray& lhs, const real_t &rhs,
+                 NDArray* ret, RunContext ctx) {
+  LOG(FATAL) << "EvalScalar_ not implemented for sparse tensors";
 }
 
 template<>
 void EvalClip<DEVICE>(const TBlob &src, const real_t &a_min, const real_t &a_max,
-                      TBlob *ret, RunContext ctx) {
+                             TBlob *ret, RunContext ctx) {
   typedef DEVICE xpu;
   using namespace mshadow::expr;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
@@ -320,12 +295,11 @@ void EvalClip<DEVICE>(const TBlob &src, const real_t &a_min, const real_t &a_max
 }
 
 template<>
-void EvalRandom<DEVICE, UniformDistribution>(
-    const real_t &a,
-    const real_t &b,
-    const Resource &resource,
-    TBlob *ret,
-    RunContext ctx) {
+void EvalRandom<DEVICE, UniformDistribution>(const real_t &a,
+                                             const real_t &b,
+                                             const Resource &resource,
+                                             TBlob *ret,
+                                             RunContext ctx) {
   typedef DEVICE xpu;
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   switch (ret->type_flag_) {
