@@ -482,7 +482,11 @@ inline DotForwardEx(const nnvm::NodeAttrs& attrs,
                     const std::vector<NDArray>& inputs,
                     const std::vector<OpReqType>& req,
                     const std::vector<NDArray>& outputs) {
-  // TODO(junwu) implement this
+
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_NE(req[0], kWriteInplace);
+  CHECK_NE(req[1], kWriteInplace);
 }
 
 inline bool DotShape(const nnvm::NodeAttrs& attrs,
