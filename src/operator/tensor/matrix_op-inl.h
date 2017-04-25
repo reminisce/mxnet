@@ -476,21 +476,139 @@ void DotBackward_(const nnvm::NodeAttrs& attrs,
   }
 }
 
+template<bool transpose>
+struct DotCsrDense;
+
+/*!
+ * \brief dot(csr, dense)
+ */
+template<>
+struct DotCsrDense<false> {
+  /*!
+   * \brief This function represents performing an inner product between a row of lhs
+   * and a column of rhs and then assigning the value to out[i].
+   * \param i i-th element in out 1D view
+   * \param out output matrix
+   * \param data_l csr values of lhs
+   * \param indptr_l csr indptr of lhs
+   * \param col_idx_l csr col_idx of lhs
+   * \param data_r dense data of rhs
+   * \param num_rows number of rows of output
+   * \param num_cols number of columns of output
+   */
+  template<typename DType, typename IType, typename CType>
+  MSHADOW_XINLINE static void Map(int i, DType* out, const DType* data_l, const IType* indptr_l,
+                                  const CType* col_idx_l, const DType* data_r,
+                                  const int num_rows, const int num_cols) {
+    const int irow = i / num_rows;  // row id of the lhs
+    const int icol = i % num_cols;  // col id of the rhs
+    out[i] = 0;
+    for (IType j = indptr_l[irow]; j < indptr_l[irow+1]; ++j) {
+      const CType cur_col = col_idx_l[j];  // corresponding row id of the rhs
+      out[i] += data_l[j] * data_r[cur_col*num_cols+icol];
+    }
+  }
+};
+
+/*!
+ * \brief dot(csr.T(), dense)
+ */
+template<>
+struct DotCsrDense<true> {
+  /*!
+   * \brief This function represents performing an inner product between a column of lhs
+   * and a column of rhs and then assigning the value to out[i].
+   * \param i i-th element in out 1D view
+   * \param out output matrix
+   * \param data_l csr values of lhs
+   * \param indptr_l csr indptr of lhs
+   * \param col_idx_l csr col_idx of lhs
+   * \param data_r dense data of rhs
+   * \param num_rows_l number of rows of lhs
+   * \param num_rows number of rows of output
+   * \param num_cols number of columns of outputs
+   */
+  template<typename DType, typename IType, typename CType>
+  MSHADOW_XINLINE static void Map(int i, DType* out, const DType* data_l, const IType* indptr_l,
+                                  const CType* col_idx_l, const DType* data_r, const int num_rows_l,
+                                  const int num_rows, const int num_cols) {
+    const int irow = i / num_rows;  // col id of the lhs
+    const int icol = i % num_cols;  // col id of the rhs
+    out[i] = 0;
+    for (int i = 0; i < num_rows_l; ++i) {
+      const IType low = indptr_l[i];
+      const IType high = indptr_l[i+1];
+      if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
+      int j = low;
+      while (j < high) {
+        if (irow == col_idx_l[j]) {
+          out[i] += data_l[j] * data_r[i*num_cols+icol];
+          break;
+        }
+        ++j;
+      }
+    }
+  }
+};
+
 template<typename xpu>
-inline DotForwardEx(const nnvm::NodeAttrs& attrs,
-                    const OpContext& ctx,
-                    const std::vector<NDArray>& inputs,
-                    const std::vector<OpReqType>& req,
-                    const std::vector<NDArray>& outputs) {
+inline void DotForwardCsrDense(const nnvm::NodeAttrs& attrs,
+                               const OpContext& ctx,
+                               const std::vector<NDArray>& inputs,
+                               const std::vector<OpReqType>& req,
+                               const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 1U);
+
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
-  Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_EQ(outputs[0].type_flag_, inputs[0].type_flag_)
-      << "Binary function only support input/output with the same type";
-  CHECK_EQ(outputs[0].type_flag_, inputs[1].type_flag_)
-      << "Binary function only support input/output with the same type";
-  // TODO(junwu): check whether this CHECK_EQ is reasonable
-  CHECK_EQ(outputs[0].type_flag_, kFloat32)
-      << "dot only support 32 bit float so far";
+
+  // TODO(junwu): check whether this CHECK is reasonable
+  CHECK((!param.transpose_a && !param.transpose_b)
+      || (param.transpose_a && !param.transpose_b))
+    << "DotForwardEx only supports dot(A, X) and dot(A.T(), X)";
+
+  const NDArray& nd_l = inputs[0];
+  const NDArray& nd_r = inputs[1];
+  const NDArray& nd_out = outputs[0];
+
+  CHECK_EQ(nd_l.storage_type(), kCSRStorage)
+    << "DotForwardCsrDense only supports csr lhs storage type";
+  CHECK_EQ(nd_r.storage_type(), kDefaultStorage)
+    << "DotForwardCsrDense only supports default rhs storage type";
+  CHECK_EQ(nd_out.storage_type(), kDefaultStorage)
+    << "DotForwardCsrDense only supports default output storage type";
+
+  CHECK_EQ(nd_l.shape().ndim(), 2)
+    << "DotForwardCsrDense only supports 2D lhs";
+  CHECK_EQ(nd_r.shape().ndim(), 2)
+    << "DotForwardCsrDense only supports 2D rhs";
+  CHECK_EQ(nd_out.shape().ndim(), 2)
+    << "DotForwardCsrDense only supports 2D output";
+
+  const TBlob& data_l = nd_l.data();
+  const TBlob& indptr_l = nd_l.aux_data(csr::kIndPtr);
+  const TBlob& col_idx_l = nd_l.aux_data(csr::kIdx);
+  const TBlob& data_r = nd_r.data();
+  const TBlob& data_out = nd_out.data();
+
+  MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
+    NDARRAY_IDX_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
+      NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
+        if (!param.transpose_a) {
+          mxnet_op::Kernel<DotCsrDense<false>, xpu>::Launch(s, data_out.Size(),
+              data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
+              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), nd_l.shape()[0],
+              nd_r.shape()[1]);
+        } else {
+          mxnet_op::Kernel<DotCsrDense<true>, xpu>::Launch(s, data_out.Size(),
+              data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
+              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), nd_l.shape()[0],
+              nd_l.shape()[1], nd_r.shape()[1]);
+        }
+      });
+    });
+  });
 }
 
 inline bool DotShape(const nnvm::NodeAttrs& attrs,
