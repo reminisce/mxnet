@@ -337,6 +337,7 @@ NNVM_REGISTER_OP(dot)
   })
 .set_attr<nnvm::FInferShape>("FInferShape", DotShape)
 .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<2, 1>)
+.set_attr<nnvm::FInferStorageType>("FInferStorageType", DotForwardInferStorageType)
 .set_attr<FResourceRequest>("FResourceRequest",
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
@@ -353,7 +354,9 @@ NNVM_REGISTER_OP(_backward_dot)
 .set_num_outputs(2)
 .set_attr_parser(ParamParser<DotParam>)
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
+.set_attr<nnvm::FInferStorageType>("FInferStorageType", DotBackwardInferStorageType)
 .set_attr<FCompute>("FCompute<cpu>", DotBackward_<cpu>)
+.set_attr<FComputeEx>("FComputeEx<cpu>", DotBackwardEx<cpu>)
 .add_arguments(DotParam::__FIELDS__());
 
 NNVM_REGISTER_OP(batch_dot)

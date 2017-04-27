@@ -183,37 +183,34 @@ struct FillRowIdx {
 };
 
 /*!
- * \brief Given a DNS storage type tensor, generate
- * 
+ * \brief
+ * Given a DNS storage type tensor, create a RSP type sparse tensor
+ * from it. This would deep-copy non-zero rows of the dense vector to
+ * the data blob of the RSP tensor and allocate memory for storing the
+ * non-zero row indices in the RSP tensor.
+ * TODO(junwu): The argument type for the dense ndarray is TBlob instead
+ * of NDArray since it's convenient to call this function from any
+ * operator's Forward/Backward functions where dev_id is unknown
+ * but required to wrap a TBlob object as an NDArray. See the use case
+ * in DotForwardCsrDnsRsp in matrix_op-inl.h.
+ * Will revisit this interface in the future.
  */
 template<typename xpu>
-void CastStorageDnsRsp(const nnvm::NodeAttrs& attrs,
-                       const OpContext& ctx,
-                       const std::vector<NDArray>& inputs,
-                       const std::vector<OpReqType>& req,
-                       const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 1U);
-  CHECK_EQ(outputs.size(), 1U);
-  CHECK_EQ(req.size(), 1U);
-  CHECK_EQ(req[0], kWriteTo) << "CastStorageDnsRsp only supports req=kWriteTo";
-
-  const NDArray& input = inputs[0];
-  const NDArray& output = outputs[0];
-  CHECK_EQ(input.storage_type(), kDefaultStorage);
-  CHECK_EQ(output.storage_type(), kRowSparseStorage);
-  CHECK_EQ(input.shape(), output.shape());
-
-  const TBlob input_data = input.data();
+void CastStorageDnsRspImpl(const OpContext& ctx, const TBlob& dns, NDArray* rsp) {
+  CHECK(rsp != nullptr);
+  CHECK_EQ(rsp->storage_type(), kRowSparseStorage);
+  CHECK_EQ(dns.shape_, rsp->shape());
 
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  // TODO(junwu): allocate row_idx array for output with size=input.shape[0]
-  MSHADOW_TYPE_SWITCH(input_data.type_flag_, DType, {  // data type
-    NDARRAY_IDX_TYPE_SWITCH(output.aux_type(rowsparse::kIdx), RType, {  // row idx type
-      RType* row_idx = output.aux_data(rowsparse::kIdx).dptr<RType>();
-      const index_t num_rows = input_data.shape_[0];
-      const index_t num_cols = input_data.shape_[1];
+  // TODO(junwu): allocate row_idx array for rsp with size=dns.shape[0]
+  // rsp->AllocAuxData(rowsparse::kIdx, mshadow::Shape1(dns.shape_[0]));
+  MSHADOW_TYPE_SWITCH(dns.type_flag_, DType, {  // data type
+    NDARRAY_IDX_TYPE_SWITCH(rsp->aux_type(rowsparse::kIdx), RType, {  // row idx type
+      RType* row_idx = rsp->aux_data(rowsparse::kIdx).dptr<RType>();
+      const index_t num_rows = dns.shape_[0];
+      const index_t num_cols = dns.shape_[1];
       // Fill input_data.shape_[0] into row_idx array
-      mxnet_op::Kernel<FillRowIdx, xpu>::Launch(s, num_rows, row_idx, input_data.dptr<DType>(),
+      mxnet_op::Kernel<FillRowIdx, xpu>::Launch(s, num_rows, row_idx, dns.dptr<DType>(),
           num_rows, num_cols);
 
       // single thread scanning row_idx array to find out number of non-zero rows
@@ -222,12 +219,12 @@ void CastStorageDnsRsp(const nnvm::NodeAttrs& attrs,
         if (row_idx[i] < static_cast<RType>(num_rows)) ++nnr;
       }
       if (0 == nnr) return;  // zero matrix
-      // TODO(junwu): allocate data array for output
-      // output.AllocData(Shape2(nnr, num_cols));
+      // TODO(junwu): allocate data array for rsp
+      // rsp->AllocData(Shape2(nnr, num_cols));
       // single thread for compressing row_idx and copying data
-      // from input to output
-      auto in_tensor = input_data.FlatTo2D<xpu, DType>(s);
-      auto out_tensor = output.data().FlatTo2D<xpu, DType>(s);
+      // from dns to rsp, might be a bottleneck.
+      auto in_tensor = dns.FlatTo2D<xpu, DType>(s);
+      auto out_tensor = rsp->data().FlatTo2D<xpu, DType>(s);
       int last_nnr_id = -1;  // last non-zero row id
       for (index_t i = 0; i < num_rows; ++i) {
         if (row_idx[i] < static_cast<RType>(num_rows)) {  // non-zero row found
@@ -235,7 +232,8 @@ void CastStorageDnsRsp(const nnvm::NodeAttrs& attrs,
           mshadow::Copy(out_tensor[last_nnr_id], in_tensor[i], s);
         }
       }
-      output.SetAuxShape(rowsparse::kIdx, mshadow::Shape1(last_nnr_id+1));
+      // update effective size (not capacity) of the row_idx of rsp
+      rsp->SetAuxShape(rowsparse::kIdx, mshadow::Shape1(last_nnr_id+1));
     });
   });
 }
@@ -246,12 +244,14 @@ void CastStorageComputeRspDns(const nnvm::NodeAttrs& attrs,
                  const std::vector<NDArray>& inputs,
                  const std::vector<OpReqType>& req,
                  const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 1);
-  CHECK_EQ(outputs.size(), 1);
+  CHECK_EQ(inputs.size(), 1U);
+  CHECK_EQ(outputs.size(), 1U);
   if (inputs[0].storage_type() == kDefaultStorage
       && outputs[0].storage_type() == kRowSparseStorage) {
-    CastStorageDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+    NDArray tmp = outputs[0];  // get rid of the const qualifer
+    CastStorageDnsRspImpl<xpu>(ctx, inputs[0].data(), &tmp);
   }
+  // TODO(junwu): move the following code to a impl function
   using namespace mshadow;
   using namespace mshadow::expr;
   Stream<xpu> *s = ctx.get_stream<xpu>();

@@ -477,6 +477,36 @@ void DotBackward_(const nnvm::NodeAttrs& attrs,
   }
 }
 
+bool DotForwardInferStorageType(const nnvm::NodeAttrs& attrs,
+                                std::vector<int> *in_attrs,
+                                std::vector<int> *out_attrs) {
+  CHECK_EQ(in_attrs->size(), 2U);
+  CHECK_EQ(out_attrs->size(), 1U);
+  if (kCSRStorage == in_attrs->at(0) && kDefaultStorage == in_attrs->at(1)) {
+    // dot(csr, dns) = rsp
+    out_attrs->at(0) = kRowSparseStorage;
+  } else {  // fallback
+    return ElemwiseStorageType<2, 1>(attrs, in_attrs, out_attrs);
+  }
+  return true;
+}
+
+bool DotBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
+                                 std::vector<int> *in_attrs,
+                                 std::vector<int> *out_attrs) {
+  CHECK_EQ(in_attrs->size(), 3U);
+  CHECK_EQ(out_attrs->size(), 2U);
+  if (kDefaultStorage == in_attrs->at(0)
+      && kCSRStorage == in_attrs->at(1)
+      && kDefaultStorage == in_attrs->at(2)) {
+    out_attrs->at(0) = kRowSparseStorage;
+    out_attrs->at(1) = kRowSparseStorage;
+  } else {  // fallback
+    return ElemwiseStorageType<3, 2>(attrs, in_attrs, out_attrs);
+  }
+  return true;
+}
+
 /*!
  * \brief Tempalte declaration of dot(csr, dns1) = dns2.
  * Whether csr and dns1 are transposed before dot operation
@@ -604,13 +634,16 @@ inline void DotForwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
 
 /*!
  * \brief Backward of
- * 1. dns_out = dot(csr, dns)
- * grad(csr) = dot(grad(dns_out), dns.T())
- * grad(dns) = dot(csr.T(), grad(dns_out))
+ * 1. out = dot(csr, dns)
+ * grad(csr) = dot(grad(out), dns.T())
+ * grad(dns) = dot(csr.T(), grad(out))
  *
- * 2. dns_out = dot(csr.T(), dns)
- * grad(csr) = dot(dns, grad(dns_out).T())
- * grad(dns) = dot(csr, grad(dns_out))
+ * 2. out = dot(csr.T(), dns)
+ * grad(csr) = dot(dns, grad(out).T())
+ * grad(dns) = dot(csr, grad(out))
+ *
+ * Assume the gradient of the op's output is a dense matrix.
+ * This function must be called by DotBackwardEx.
  */
 template<typename xpu>
 inline void DotBackwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
@@ -643,8 +676,10 @@ inline void DotBackwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
     << "sparse dot only supports csr storage type for lhs";
   CHECK_EQ(nd_r.storage_type(), kDefaultStorage)
     << "sparse dot only supports default storage type for rhs";
-  CHECK_EQ(nd_grad_l.storage_type(), kDefaultStorage)
-    << "sparse dot only supports default storage type for lhs gradient";
+  if (kNullOp != req[0]) {
+    CHECK_EQ(nd_grad_l.storage_type(), kDefaultStorage)
+      << "sparse dot only supports default storage type for lhs gradient";
+  }
   CHECK_EQ(nd_grad_r.storage_type(), kDefaultStorage)
     << "sparse dot only supports default storage type for rhs gradient";
 
@@ -667,25 +702,32 @@ inline void DotBackwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
           mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
               s, data_grad_r.Size(), data_grad_r.dptr<DType>());
         }
-        mshadow::Tensor<xpu, 2, DType> out_grad = data_out_grad.get(s);
-        mshadow::Tensor<xpu, 2, DType> input_r = data_r.get(s);
-        mshadow::Tensor<xpu, 2, DType> grad_l = data_grad_l.get(s);
         if (param.transpose_a) {
-          // grad(csr) = dot(dns, grad(out).T())
-          ASSIGN_DISPATCH(grad_l, req[0], dot(input_r, out_grad.T()));
+          if (kNullOp != req[0]) {
+            mshadow::Tensor<xpu, 2, DType> out_grad = data_out_grad.get<xpu, 2, DType>(s);
+            mshadow::Tensor<xpu, 2, DType> input_r = data_r.get<xpu, 2, DType>(s);
+            mshadow::Tensor<xpu, 2, DType> grad_l = data_grad_l.get<xpu, 2, DType>(s);
+            // grad(csr) = dot(dns, grad(out).T())
+            ASSIGN_DISPATCH(grad_l, req[0], dot(input_r, out_grad.T()));
+          }
           // grad(dns) = dot(csr, grad(out))
           mxnet_op::Kernel<DotCsrDnsDns<false, false>, xpu>::Launch(
-              s, data_grad_r.Size(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
-              col_idx_l.dptr<CType>(), data_out_grad.dptr<DType>(), data_r.shape_[0],
+              s, data_grad_r.Size(), data_grad_r.dptr<DType>(), data_l.dptr<DType>(),
+              indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_out_grad.dptr<DType>(),
               data_r.shape_[1]);
         } else {
-          // grad(csr) = dot(grad(out), dns.T())
-          ASSIGN_DISPATCH(grad_l, req[0], dot(out_grad, input_r.T()));
+          if (kNullOp != req[0]) {
+            mshadow::Tensor<xpu, 2, DType> out_grad = data_out_grad.get<xpu, 2, DType>(s);
+            mshadow::Tensor<xpu, 2, DType> input_r = data_r.get<xpu, 2, DType>(s);
+            mshadow::Tensor<xpu, 2, DType> grad_l = data_grad_l.get<xpu, 2, DType>(s);
+            // grad(csr) = dot(grad(out), dns.T())
+            ASSIGN_DISPATCH(grad_l, req[0], dot(out_grad, input_r.T()));
+          }
           // grad(dns) = dot(csr.T(), grad(out))
           mxnet_op::Kernel<DotCsrDnsDns<true, false>, xpu>::Launch(
             s, data_grad_r.Size(), data_grad_r.dptr<DType>(), data_l.dptr<DType>(),
             indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_out_grad.dptr<DType>(),
-            nd_l.shape()[0], data_r.shape_[0], data_r.shape_[1]);
+            nd_l.shape()[0], data_r.shape_[1]);
         }
       });
     });
@@ -809,8 +851,8 @@ inline void DotForwardCsrDnsRsp(const nnvm::NodeAttrs& attrs,
         NDARRAY_IDX_TYPE_SWITCH(outputs[0].aux_type(rowsparse::kIdx), RType, {  // row idx type
           if (param.transpose_a) {
             // TODO(junwu): When performing dot(csr.T(), dns) to get a rsp matrix,
-            // we first allocate a dns tblob as a placeholder for the output.
-            // Then we compressed the dns to rsp format inplace. We take this approach
+            // we first allocate a dns tblob as a temporary placeholder for the output.
+            // Then we cast the dns to a rsp matrix. We take this approach
             // instead of generating a rsp output with the actual storage size
             // because it's difficult to calculate the number of non-zero columns
             // of the csr for allocating the memory of the output rsp.
@@ -818,7 +860,7 @@ inline void DotForwardCsrDnsRsp(const nnvm::NodeAttrs& attrs,
             // better ways.
 
             // get temporary space as an intermediate result of dot(csr.T(), dns).
-            // requested[0] is temp space
+            // requested[0] is temp space resource
             mshadow::Tensor<xpu, 2, DType> out_tmp = ctx.requested[0].get_space_typed<xpu, 2, DType>(
                 mshadow::Shape2(outputs[0].shape()[0], outputs[0].shape()[1]), s);
             // generate dns output
@@ -828,8 +870,8 @@ inline void DotForwardCsrDnsRsp(const nnvm::NodeAttrs& attrs,
                 out_tmp.shape_[0], out_tmp.shape_[1]);
 
             // cast dns to rsp
-            CastStorageDnsRsp<xpu>(attrs, ctx, {NDArray(TBlob(out_tmp), outputs[0].ctx().dev_id)},
-                req, outputs);
+            NDArray tmp = outputs[0];  // get rid of the const qualifier
+            CastStorageDnsRspImpl<xpu>(ctx, TBlob(out_tmp), &tmp);
           } else {
             // TODO(junwu): check whether the following code is a bottleneck
             // allocate output NDArray (single thread)
@@ -882,6 +924,26 @@ inline void DotForwardEx(const nnvm::NodeAttrs& attrs,
       && inputs[1].storage_type() == kDefaultStorage
       && outputs[0].storage_type() == kRowSparseStorage) {
     DotForwardCsrDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+  } else {
+    // TODO(junwu): add fallback mechanism
+    LOG(FATAL) << "Not supported";
+  }
+}
+
+template<typename xpu>
+inline void DotBackwardEx(const nnvm::NodeAttrs& attrs,
+                          const OpContext& ctx,
+                          const std::vector<NDArray>& inputs,
+                          const std::vector<OpReqType>& req,
+                          const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 3U);
+  CHECK_EQ(outputs.size(), 2U);
+
+  if (inputs[0].storage_type() == kDefaultStorage  // ograd dns format
+      && inputs[1].storage_type() == kCSRStorage  // csr input lhs of the op
+      && inputs[2].storage_type() == kDefaultStorage  // dns input rhs of the op
+      && outputs[1].storage_type() == kDefaultStorage) {  // grad(rhs) dense format
+    DotBackwardCsrDnsDns<xpu>(attrs, ctx, inputs, req, outputs);
   } else {
     // TODO(junwu): add fallback mechanism
     LOG(FATAL) << "Not supported";
