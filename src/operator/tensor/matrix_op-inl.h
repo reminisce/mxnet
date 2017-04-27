@@ -478,25 +478,6 @@ void DotBackward_(const nnvm::NodeAttrs& attrs,
 }
 
 /*!
- * \brief Binary search
- * For finding column idx of the x in a matrix row
- * from the l-th column to the r-th column.
- * This function does no boundary check.
- * \return the idx of x in the array if found, else -1
- */
-
-template<typename DType>
-int BinarySearch(DType* arr, int l, int r, DType x) {
-  while (l <= r) {
-    int m = l + (r - l) / 2;
-    if (arr[m] == x) return m;
-    if (arr[m] < x) l = m + 1;
-    else r = m - 1;
-  }
-  return -1;
-}
-
-/*!
  * \brief Tempalte declaration of dot(csr, dns1) = dns2.
  * Whether csr and dns1 are transposed before dot operation
  * is determined by trans_csr and trans_dns, respectively.
