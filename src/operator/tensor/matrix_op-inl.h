@@ -499,8 +499,8 @@ bool DotBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
   if (kDefaultStorage == in_attrs->at(0)
       && kCSRStorage == in_attrs->at(1)
       && kDefaultStorage == in_attrs->at(2)) {
-    out_attrs->at(0) = kRowSparseStorage;
-    out_attrs->at(1) = kRowSparseStorage;
+    out_attrs->at(0) = kDefaultStorage;
+    out_attrs->at(1) = kDefaultStorage;
   } else {  // fallback
     return ElemwiseStorageType<3, 2>(attrs, in_attrs, out_attrs);
   }
