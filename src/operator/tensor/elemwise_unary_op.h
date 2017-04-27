@@ -12,6 +12,7 @@
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"
 #include "../special_functions-inl.h"
+#include "../mxnet_op.h"
 
 namespace mxnet {
 namespace op {
@@ -159,17 +160,101 @@ struct CastStorageParam : public dmlc::Parameter<CastStorageParam> {
   }
 };
 
+/*!
+ * \brief This is the kernel for initializing row_idx array
+ * of a RSP matrix. Each thread checks a row of the matrix,
+ * if non-zero elements are found, mark this row as non-zero
+ * by row_idx[cur_row_id] = cur_row_id. Otherwise,
+ * row_idx[cur_row_id] = num_rows.
+ */
+struct FillRowIdx {
+  template<typename DType, typename RType>
+  MSHADOW_XINLINE static void Map(int i, RType* row_idx, const DType* arr,
+                                  const int num_rows, const int num_cols) {
+    row_idx[i] = num_rows;
+    const int offset = i * num_cols;
+    for (int j = 0; j < num_cols; ++j) {
+      if (arr[offset+j] != 0) {
+        row_idx[i] = i;
+        break;
+      }
+    }
+  }
+};
+
+/*!
+ * \brief Given a DNS storage type tensor, generate
+ * 
+ */
+template<typename xpu>
+void CastStorageDnsRsp(const nnvm::NodeAttrs& attrs,
+                       const OpContext& ctx,
+                       const std::vector<NDArray>& inputs,
+                       const std::vector<OpReqType>& req,
+                       const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 1U);
+  CHECK_EQ(outputs.size(), 1U);
+  CHECK_EQ(req.size(), 1U);
+  CHECK_EQ(req[0], kWriteTo) << "CastStorageDnsRsp only supports req=kWriteTo";
+
+  const NDArray& input = inputs[0];
+  const NDArray& output = outputs[0];
+  CHECK_EQ(input.storage_type(), kDefaultStorage);
+  CHECK_EQ(output.storage_type(), kRowSparseStorage);
+  CHECK_EQ(input.shape(), output.shape());
+
+  const TBlob input_data = input.data();
+
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  // TODO(junwu): allocate row_idx array for output with size=input.shape[0]
+  MSHADOW_TYPE_SWITCH(input_data.type_flag_, DType, {  // data type
+    NDARRAY_IDX_TYPE_SWITCH(output.aux_type(rowsparse::kIdx), RType, {  // row idx type
+      RType* row_idx = output.aux_data(rowsparse::kIdx).dptr<RType>();
+      const index_t num_rows = input_data.shape_[0];
+      const index_t num_cols = input_data.shape_[1];
+      // Fill input_data.shape_[0] into row_idx array
+      mxnet_op::Kernel<FillRowIdx, xpu>::Launch(s, num_rows, row_idx, input_data.dptr<DType>(),
+          num_rows, num_cols);
+
+      // single thread scanning row_idx array to find out number of non-zero rows
+      index_t nnr = 0;  // number of non-zero rows
+      for (index_t i = 0; i < num_rows; ++i) {
+        if (row_idx[i] < static_cast<RType>(num_rows)) ++nnr;
+      }
+      if (0 == nnr) return;  // zero matrix
+      // TODO(junwu): allocate data array for output
+      // output.AllocData(Shape2(nnr, num_cols));
+      // single thread for compressing row_idx and copying data
+      // from input to output
+      auto in_tensor = input_data.FlatTo2D<xpu, DType>(s);
+      auto out_tensor = output.data().FlatTo2D<xpu, DType>(s);
+      int last_nnr_id = -1;  // last non-zero row id
+      for (index_t i = 0; i < num_rows; ++i) {
+        if (row_idx[i] < static_cast<RType>(num_rows)) {  // non-zero row found
+          row_idx[++last_nnr_id] = row_idx[i];
+          mshadow::Copy(out_tensor[last_nnr_id], in_tensor[i], s);
+        }
+      }
+      output.SetAuxShape(rowsparse::kIdx, mshadow::Shape1(last_nnr_id+1));
+    });
+  });
+}
+
 template<typename xpu>
 void CastStorageComputeRspDns(const nnvm::NodeAttrs& attrs,
                  const OpContext& ctx,
                  const std::vector<NDArray>& inputs,
                  const std::vector<OpReqType>& req,
                  const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(outputs.size(), 1);
+  if (inputs[0].storage_type() == kDefaultStorage
+      && outputs[0].storage_type() == kRowSparseStorage) {
+    CastStorageDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+  }
   using namespace mshadow;
   using namespace mshadow::expr;
   Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_EQ(inputs.size(), 1);
-  CHECK_EQ(outputs.size(), 1);
   auto out = outputs[0];
   auto in = inputs[0];
   auto stype = in.storage_type();

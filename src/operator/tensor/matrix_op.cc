@@ -337,7 +337,12 @@ NNVM_REGISTER_OP(dot)
   })
 .set_attr<nnvm::FInferShape>("FInferShape", DotShape)
 .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<2, 1>)
+.set_attr<FResourceRequest>("FResourceRequest",
+  [](const NodeAttrs& attrs) {
+    return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+  })
 .set_attr<FCompute>("FCompute<cpu>", DotForward_<cpu>)
+.set_attr<FComputeEx>("FComputeEx<cpu>", DotForwardEx<cpu>)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_dot"})
 .add_argument("lhs", "NDArray-or-Symbol", "The first input")
 .add_argument("rhs", "NDArray-or-Symbol", "The second input")

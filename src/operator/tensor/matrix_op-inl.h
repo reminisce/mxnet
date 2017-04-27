@@ -14,6 +14,7 @@
 #include "../elemwise_op_common.h"
 #include "../mxnet_op.h"
 #include "broadcast_reduce_op.h"
+#include "./elemwise_unary_op.h"
 
 #if MXNET_USE_CUDA
 #include <thrust/device_vector.h>
@@ -476,14 +477,39 @@ void DotBackward_(const nnvm::NodeAttrs& attrs,
   }
 }
 
-template<bool transpose>
-struct DotCsrDense;
+/*!
+ * \brief Binary search
+ * For finding column idx of the x in a matrix row
+ * from the l-th column to the r-th column.
+ * This function does no boundary check.
+ * \return the idx of x in the array if found, else -1
+ */
+
+template<typename DType>
+int BinarySearch(DType* arr, int l, int r, DType x) {
+  while (l <= r) {
+    int m = l + (r - l) / 2;
+    if (arr[m] == x) return m;
+    if (arr[m] < x) l = m + 1;
+    else r = m - 1;
+  }
+  return -1;
+}
 
 /*!
- * \brief dot(csr, dense)
+ * \brief Tempalte declaration of dot(csr, dns1) = dns2.
+ * Whether csr and dns1 are transposed before dot operation
+ * is determined by trans_csr and trans_dns, respectively.
+ * For now we only implemented the case when trans_dns = false.
+ */
+template<bool trans_csr, bool trans_dns>
+struct DotCsrDnsDns;
+
+/*!
+ * \brief Kernel of dot(csr, dns1) = dns2
  */
 template<>
-struct DotCsrDense<false> {
+struct DotCsrDnsDns<false, false> {
   /*!
    * \brief This function represents performing an inner product between a row of lhs
    * and a column of rhs and then assigning the value to out[i].
@@ -493,16 +519,14 @@ struct DotCsrDense<false> {
    * \param indptr_l csr indptr of lhs
    * \param col_idx_l csr col_idx of lhs
    * \param data_r dense data of rhs
-   * \param num_rows number of rows of output
    * \param num_cols number of columns of output
    */
   template<typename DType, typename IType, typename CType>
   MSHADOW_XINLINE static void Map(int i, DType* out, const DType* data_l, const IType* indptr_l,
                                   const CType* col_idx_l, const DType* data_r,
-                                  const int num_rows, const int num_cols) {
-    const int irow = i / num_rows;  // row id of the lhs
+                                  const int num_cols) {
+    const int irow = i / num_cols;  // row id of the lhs
     const int icol = i % num_cols;  // col id of the rhs
-    out[i] = 0;
     for (IType j = indptr_l[irow]; j < indptr_l[irow+1]; ++j) {
       const CType cur_col = col_idx_l[j];  // corresponding row id of the rhs
       out[i] += data_l[j] * data_r[cur_col*num_cols+icol];
@@ -511,10 +535,10 @@ struct DotCsrDense<false> {
 };
 
 /*!
- * \brief dot(csr.T(), dense)
+ * \brief Kernel of dot(csr.T(), dns1) = dns2
  */
 template<>
-struct DotCsrDense<true> {
+struct DotCsrDnsDns<true, false> {
   /*!
    * \brief This function represents performing an inner product between a column of lhs
    * and a column of rhs and then assigning the value to out[i].
@@ -525,90 +549,362 @@ struct DotCsrDense<true> {
    * \param col_idx_l csr col_idx of lhs
    * \param data_r dense data of rhs
    * \param num_rows_l number of rows of lhs
-   * \param num_rows number of rows of output
    * \param num_cols number of columns of outputs
    */
   template<typename DType, typename IType, typename CType>
   MSHADOW_XINLINE static void Map(int i, DType* out, const DType* data_l, const IType* indptr_l,
                                   const CType* col_idx_l, const DType* data_r, const int num_rows_l,
-                                  const int num_rows, const int num_cols) {
-    const int irow = i / num_rows;  // col id of the lhs
+                                  const int num_cols) {
+    const int irow = i / num_cols;  // col id of the lhs
     const int icol = i % num_cols;  // col id of the rhs
-    out[i] = 0;
     for (int i = 0; i < num_rows_l; ++i) {
       const IType low = indptr_l[i];
       const IType high = indptr_l[i+1];
       if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
-      int j = low;
-      while (j < high) {
-        if (irow == col_idx_l[j]) {
-          out[i] += data_l[j] * data_r[i*num_cols+icol];
-          break;
-        }
-        ++j;
+      int j = -1, l = low, r = high - 1;
+      while (l <= r) {
+        int m = l + (r - l) / 2;
+        if (col_idx_l[m] == irow) { j = m; break; }
+        if (col_idx_l[m] < irow) l = m + 1;
+        else r = m - 1;
+      }
+      if (j >= 0) {
+        out[i] += data_l[j] * data_r[i*num_cols+icol];
       }
     }
   }
 };
 
+/*!
+ * \brief Forward function of dot(csr, dns) = dns_out
+ * Must be called by DotForwardEx
+ */
 template<typename xpu>
-inline void DotForwardCsrDense(const nnvm::NodeAttrs& attrs,
-                               const OpContext& ctx,
-                               const std::vector<NDArray>& inputs,
-                               const std::vector<OpReqType>& req,
-                               const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 2U);
-  CHECK_EQ(outputs.size(), 1U);
+inline void DotForwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
+                                const OpContext& ctx,
+                                const std::vector<NDArray>& inputs,
+                                const std::vector<OpReqType>& req,
+                                const std::vector<NDArray>& outputs) {
+  if (kNullOp == req[0]) return;
 
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
   const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
 
   // TODO(junwu): check whether this CHECK is reasonable
-  CHECK((!param.transpose_a && !param.transpose_b)
-      || (param.transpose_a && !param.transpose_b))
-    << "DotForwardEx only supports dot(A, X) and dot(A.T(), X)";
+  CHECK(!param.transpose_b) << "sparse dot only supports dot(A, X) and dot(A.T(), X)";
 
-  const NDArray& nd_l = inputs[0];
-  const NDArray& nd_r = inputs[1];
-  const NDArray& nd_out = outputs[0];
-
-  CHECK_EQ(nd_l.storage_type(), kCSRStorage)
-    << "DotForwardCsrDense only supports csr lhs storage type";
-  CHECK_EQ(nd_r.storage_type(), kDefaultStorage)
-    << "DotForwardCsrDense only supports default rhs storage type";
-  CHECK_EQ(nd_out.storage_type(), kDefaultStorage)
-    << "DotForwardCsrDense only supports default output storage type";
-
-  CHECK_EQ(nd_l.shape().ndim(), 2)
-    << "DotForwardCsrDense only supports 2D lhs";
-  CHECK_EQ(nd_r.shape().ndim(), 2)
-    << "DotForwardCsrDense only supports 2D rhs";
-  CHECK_EQ(nd_out.shape().ndim(), 2)
-    << "DotForwardCsrDense only supports 2D output";
-
-  const TBlob& data_l = nd_l.data();
-  const TBlob& indptr_l = nd_l.aux_data(csr::kIndPtr);
-  const TBlob& col_idx_l = nd_l.aux_data(csr::kIdx);
-  const TBlob& data_r = nd_r.data();
-  const TBlob& data_out = nd_out.data();
+  const TBlob data_l = inputs[0].data();
+  const TBlob indptr_l = inputs[0].aux_data(csr::kIndPtr);
+  const TBlob col_idx_l = inputs[0].aux_data(csr::kIdx);
+  const TBlob data_r = inputs[1].data();
+  const TBlob data_out = outputs[1].data();
 
   MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
     NDARRAY_IDX_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
       NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
-        if (!param.transpose_a) {
-          mxnet_op::Kernel<DotCsrDense<false>, xpu>::Launch(s, data_out.Size(),
+        if (kWriteTo == req[0]) {
+          mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
+              s, data_out.Size(), data_out.dptr<DType>());
+        }
+        if (param.transpose_a) {
+          mxnet_op::Kernel<DotCsrDnsDns<true, false>, xpu>::Launch(s, data_out.Size(),
               data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
-              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), nd_l.shape()[0],
-              nd_r.shape()[1]);
+              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), inputs[0].shape()[0],
+              inputs[1].shape()[1]);
         } else {
-          mxnet_op::Kernel<DotCsrDense<true>, xpu>::Launch(s, data_out.Size(),
+          mxnet_op::Kernel<DotCsrDnsDns<false, false>, xpu>::Launch(s, data_out.Size(),
               data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
-              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), nd_l.shape()[0],
-              nd_l.shape()[1], nd_r.shape()[1]);
+              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), inputs[1].shape()[1]);
         }
       });
     });
   });
+}
+
+/*!
+ * \brief Backward of
+ * 1. dns_out = dot(csr, dns)
+ * grad(csr) = dot(grad(dns_out), dns.T())
+ * grad(dns) = dot(csr.T(), grad(dns_out))
+ *
+ * 2. dns_out = dot(csr.T(), dns)
+ * grad(csr) = dot(dns, grad(dns_out).T())
+ * grad(dns) = dot(csr, grad(dns_out))
+ */
+template<typename xpu>
+inline void DotBackwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
+                                 const OpContext& ctx,
+                                 const std::vector<NDArray>& inputs,
+                                 const std::vector<OpReqType>& req,
+                                 const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 3U);
+  CHECK_EQ(outputs.size(), 2U);
+
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+
+  // TODO(junwu): check whether this CHECK is reasonable
+  CHECK(!param.transpose_b) << "sparse dot only supports dot(A, X) and dot(A.T(), X)";
+
+  CHECK_NE(req[0], kWriteInplace) << "DotBackwardCsrDnsDns does not support WriteInplace";
+  CHECK_NE(req[1], kWriteInplace) << "DotBackwardCsrDnsDns does not support WriteInplace";
+
+  const NDArray& nd_out_grad = inputs[0];
+  const NDArray& nd_l = inputs[1];
+  const NDArray& nd_r = inputs[2];
+
+  const NDArray& nd_grad_l = outputs[0];
+  const NDArray& nd_grad_r = outputs[1];
+
+  CHECK_EQ(nd_out_grad.storage_type(), kDefaultStorage)
+    << "sparse dot only supports default storage type for output gradient";
+  CHECK_EQ(nd_l.storage_type(), kCSRStorage)
+    << "sparse dot only supports csr storage type for lhs";
+  CHECK_EQ(nd_r.storage_type(), kDefaultStorage)
+    << "sparse dot only supports default storage type for rhs";
+  CHECK_EQ(nd_grad_l.storage_type(), kDefaultStorage)
+    << "sparse dot only supports default storage type for lhs gradient";
+  CHECK_EQ(nd_grad_r.storage_type(), kDefaultStorage)
+    << "sparse dot only supports default storage type for rhs gradient";
+
+  const TBlob data_out_grad = nd_out_grad.data();
+  const TBlob data_l = nd_l.data();
+  const TBlob indptr_l = nd_l.aux_data(csr::kIndPtr);
+  const TBlob col_idx_l = nd_l.aux_data(csr::kIdx);
+  const TBlob data_r = nd_r.data();
+  TBlob data_grad_l = nd_grad_l.data();
+  TBlob data_grad_r = nd_grad_r.data();
+
+  MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
+    NDARRAY_IDX_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
+      NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
+        if (kWriteTo == req[0]) {
+          mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
+              s, data_grad_l.Size(), data_grad_l.dptr<DType>());
+        }
+        if (kWriteTo == req[1]) {
+          mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
+              s, data_grad_r.Size(), data_grad_r.dptr<DType>());
+        }
+        mshadow::Tensor<xpu, 2, DType> out_grad = data_out_grad.get(s);
+        mshadow::Tensor<xpu, 2, DType> input_r = data_r.get(s);
+        mshadow::Tensor<xpu, 2, DType> grad_l = data_grad_l.get(s);
+        if (param.transpose_a) {
+          // grad(csr) = dot(dns, grad(out).T())
+          ASSIGN_DISPATCH(grad_l, req[0], dot(input_r, out_grad.T()));
+          // grad(dns) = dot(csr, grad(out))
+          mxnet_op::Kernel<DotCsrDnsDns<false, false>, xpu>::Launch(
+              s, data_grad_r.Size(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
+              col_idx_l.dptr<CType>(), data_out_grad.dptr<DType>(), data_r.shape_[0],
+              data_r.shape_[1]);
+        } else {
+          // grad(csr) = dot(grad(out), dns.T())
+          ASSIGN_DISPATCH(grad_l, req[0], dot(out_grad, input_r.T()));
+          // grad(dns) = dot(csr.T(), grad(out))
+          mxnet_op::Kernel<DotCsrDnsDns<true, false>, xpu>::Launch(
+            s, data_grad_r.Size(), data_grad_r.dptr<DType>(), data_l.dptr<DType>(),
+            indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_out_grad.dptr<DType>(),
+            nd_l.shape()[0], data_r.shape_[0], data_r.shape_[1]);
+        }
+      });
+    });
+  });
+}
+
+/*!
+ * \brief Tempalte declaration of dot(csr, dns) = rsp.
+ * Whether csr and dns are transposed before dot operation
+ * is determined by trans_csr and trans_dns, respectively.
+ * For now we only implemented the case when trans_dns = false.
+ */
+template<bool trans_csr, bool trans_dns>
+struct DotCsrDnsRsp;
+
+/*!
+ * \brief Kernel of dot(csr, dns) = rsp
+ */
+template<>
+struct DotCsrDnsRsp<false, false> {
+  /*!
+   * \brief This function represents performing an inner product between a row of lhs
+   * and a column of rhs and then assigning the value to out[i].
+   * \param i i-th element in out 1D view
+   * \param out output matrix's non-zero rows
+   * \param row_idx output matrix row_idx in RSP format
+   * \param data_l csr values of lhs
+   * \param indptr_l csr indptr of lhs
+   * \param col_idx_l csr col_idx of lhs
+   * \param data_r dense data of rhs
+   * \param aux_num_rows aux_shape number of rows of rhs data
+   * \param num_cols number of columns of output
+   */
+  template<typename DType, typename RType, typename IType, typename CType>
+  MSHADOW_XINLINE static void Map(int i, DType* out, const RType* row_idx, const DType* data_l,
+                                  const IType* indptr_l, const CType* col_idx_l,
+                                  const DType* data_r, const int aux_num_rows,
+                                  const int num_cols) {
+    const int aux_row = i / aux_num_rows;
+    const int irow = row_idx[aux_row] / num_cols;  // row id of the lhs
+    const int icol = row_idx[aux_row] % num_cols;  // col id of the rhs
+    for (IType j = indptr_l[irow]; j < indptr_l[irow+1]; ++j) {
+      const CType cur_col = col_idx_l[j];  // corresponding row id of the rhs
+      out[i] += data_l[j] * data_r[cur_col*num_cols+icol];
+    }
+  }
+};
+
+/*!
+ * \brief Kernel of dot(csr.T(), dns) = rsp
+ */
+template<>
+struct DotCsrDnsRsp<true, false> {
+  /*!
+   * \brief This function represents performing an inner product between a column of lhs
+   * and a column of rhs and then assigning the value to out[i].
+   * \param i i-th element in out 1D view
+   * \param out output row sparse matrix in 1-D view
+   * \param row_idx aux_data of out
+   * \param data_l csr values of lhs
+   * \param indptr_l csr indptr of lhs
+   * \param col_idx_l csr col_idx of lhs
+   * \param data_r dense data of rhs
+   * \param num_rows_l number of rows of lhs
+   * \param aux_num_rows number of non-zero rows of the output
+   * \param num_cols number of columns of outputs
+   */
+  template<typename DType, typename RType, typename IType, typename CType>
+  MSHADOW_XINLINE static void Map(int i, DType* out, const RType* row_idx,
+                                  const DType* data_l, const IType* indptr_l,
+                                  const CType* col_idx_l, const DType* data_r,
+                                  const int num_rows_l, const int aux_num_rows,
+                                  const int num_cols) {
+    const int aux_row = i / aux_num_rows;
+    const int irow = row_idx[aux_row] / num_cols;  // col id of the lhs
+    const int icol = row_idx[aux_row] % num_cols;  // col id of the rhs
+    for (int i = 0; i < num_rows_l; ++i) {
+      const IType low = indptr_l[i];
+      const IType high = indptr_l[i+1];
+      if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
+      int j = -1, l = low, r = high - 1;
+      while (l <= r) {
+        int m = l + (r - l) / 2;
+        if (col_idx_l[m] == irow) { j = m; break; }
+        if (col_idx_l[m] < irow) l = m + 1;
+        else r = m - 1;
+      }
+      if (j >= 0) {
+        out[i] += data_l[j] * data_r[i*num_cols+icol];
+      }
+    }
+  }
+};
+
+/*!
+ * \brief Forward function of dot(csr, dns) = rsp_out
+ * Must be called by DotForwardEx
+ */
+template<typename xpu>
+inline void DotForwardCsrDnsRsp(const nnvm::NodeAttrs& attrs,
+                                const OpContext& ctx,
+                                const std::vector<NDArray>& inputs,
+                                const std::vector<OpReqType>& req,
+                                const std::vector<NDArray>& outputs) {
+  if (kNullOp == req[0]) return;
+
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+
+  // TODO(junwu): check whether this CHECK is reasonable
+  CHECK(!param.transpose_b) << "sparse dot only supports dot(A, X) and dot(A.T(), X)";
+
+  const TBlob data_l = inputs[0].data();
+  const TBlob indptr_l = inputs[0].aux_data(csr::kIndPtr);
+  const TBlob col_idx_l = inputs[0].aux_data(csr::kIdx);
+  const TBlob data_r = inputs[1].data();
+
+  MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
+    NDARRAY_IDX_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
+      NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
+        NDARRAY_IDX_TYPE_SWITCH(outputs[0].aux_type(rowsparse::kIdx), RType, {  // row idx type
+          if (param.transpose_a) {
+            // TODO(junwu): When performing dot(csr.T(), dns) to get a rsp matrix,
+            // we first allocate a dns tblob as a placeholder for the output.
+            // Then we compressed the dns to rsp format inplace. We take this approach
+            // instead of generating a rsp output with the actual storage size
+            // because it's difficult to calculate the number of non-zero columns
+            // of the csr for allocating the memory of the output rsp.
+            // We will revisit this approach in the future to see if there are
+            // better ways.
+
+            // get temporary space as an intermediate result of dot(csr.T(), dns).
+            // requested[0] is temp space
+            mshadow::Tensor<xpu, 2, DType> out_tmp = ctx.requested[0].get_space_typed<xpu, 2, DType>(
+                mshadow::Shape2(outputs[0].shape()[0], outputs[0].shape()[1]), s);
+            // generate dns output
+            mxnet_op::Kernel<DotCsrDnsDns<true, false>, xpu>::Launch(
+                s, out_tmp.shape_.Size(), out_tmp.dptr_, data_l.dptr<DType>(),
+                indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_r.dptr<DType>(),
+                out_tmp.shape_[0], out_tmp.shape_[1]);
+
+            // cast dns to rsp
+            CastStorageDnsRsp<xpu>(attrs, ctx, {NDArray(TBlob(out_tmp), outputs[0].ctx().dev_id)},
+                req, outputs);
+          } else {
+            // TODO(junwu): check whether the following code is a bottleneck
+            // allocate output NDArray (single thread)
+            index_t nnr = 0;  // number of non-zero rows in csr
+            const IType* indptr = indptr_l.dptr<IType>();
+            for (int i = 0; i < (int)indptr_l.Size()-1; ++i) {
+              if (indptr[i] < indptr[i+1]) ++nnr;
+            }
+            outputs[0].CheckAndAlloc({TShape({nnr})});
+            // fill in row_idx_out (single thread)
+            const TBlob data_out = outputs[0].data();
+            const TBlob row_idx_out = outputs[0].aux_data(rowsparse::kIdx);
+            RType* row_idx = row_idx_out.dptr<RType>();
+            for (int i = 0, k = 0; i < (int)indptr_l.Size()-1; ++i) {
+              if (indptr[i] < indptr[i+1]) {
+                row_idx[k++] = i;
+              }
+            }
+
+            if (kWriteTo == req[0]) {
+              mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
+                  s, data_out.Size(), data_out.dptr<DType>());
+            }
+
+            mxnet_op::Kernel<DotCsrDnsRsp<false, false>, xpu>::Launch(
+                s, data_out.Size(), data_out.dptr<DType>(), row_idx_out.dptr<RType>(),
+                data_l.dptr<DType>(), indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(),
+                data_r.dptr<DType>(), data_out.shape_[0], data_out.shape_[1]); 
+          }
+        });
+      });
+    });
+  });
+}
+
+template<typename xpu>
+inline void DotForwardEx(const nnvm::NodeAttrs& attrs,
+                         const OpContext& ctx,
+                         const std::vector<NDArray>& inputs,
+                         const std::vector<OpReqType>& req,
+                         const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 1U);
+
+  if (inputs[0].storage_type() == kCSRStorage
+      && inputs[1].storage_type() == kDefaultStorage
+      && outputs[0].storage_type() == kDefaultStorage) {
+    DotForwardCsrDnsDns<xpu>(attrs, ctx, inputs, req, outputs);
+  } else if (inputs[0].storage_type() == kCSRStorage
+      && inputs[1].storage_type() == kDefaultStorage
+      && outputs[0].storage_type() == kRowSparseStorage) {
+    DotForwardCsrDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+  } else {
+    // TODO(junwu): add fallback mechanism
+    LOG(FATAL) << "Not supported";
+  }
 }
 
 inline bool DotShape(const nnvm::NodeAttrs& attrs,
