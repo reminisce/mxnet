@@ -156,6 +156,10 @@ struct CastStorageParam : public dmlc::Parameter<CastStorageParam> {
   int storage_type;
   DMLC_DECLARE_PARAMETER(CastStorageParam) {
     DMLC_DECLARE_FIELD(storage_type)
+    .set_default(kUndefinedStorage)
+    .add_enum("dns", kDefaultStorage)
+    .add_enum("rsp", kRowSparseStorage)
+    .add_enum("csr", kCSRStorage)
     .describe("Output storage type.");
   }
 };
@@ -352,6 +356,8 @@ void CastStorageRspDnsImpl(const OpContext& ctx, const NDArray& rsp, TBlob* dns)
   CHECK_EQ(rsp.storage_type(), kRowSparseStorage);
   MSHADOW_TYPE_SWITCH(dns->type_flag_, DType, {
     MSHADOW_TYPE_SWITCH(rsp.aux_type(rowsparse::kIdx), IType, {
+      // assign zeros
+      mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(s, dns->Size(), dns->dptr<DType>());
       // data() is not empty
       if (rsp.storage_shape().ndim() != 0) {
         // Copy over
@@ -365,6 +371,22 @@ void CastStorageRspDnsImpl(const OpContext& ctx, const NDArray& rsp, TBlob* dns)
       }
     });
   });
+}
+
+inline bool CastStorageInferStorageType(const nnvm::NodeAttrs& attrs,
+                                        std::vector<int> *in_attrs,
+                                        std::vector<int> *out_attrs) {
+  CHECK_EQ(in_attrs->size(), 1U);
+  CHECK_EQ(out_attrs->size(), 1U);
+  CHECK_NE(in_attrs->at(0), -1)
+    << "src ndarray's storage type must be specified";
+  CHECK_NE(in_attrs->at(0), kUndefinedStorage)
+    << "src ndarray's storage type must be well defined";
+  const CastStorageParam& param = nnvm::get<CastStorageParam>(attrs.parsed);
+  CHECK_NE(param.storage_type, kUndefinedStorage)
+    << "dst ndarray's storage type must be well defined";
+  TYPE_ASSIGN_CHECK(*out_attrs, 0, param.storage_type);
+  return true;
 }
 
 template<typename xpu>
