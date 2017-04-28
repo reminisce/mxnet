@@ -1,0 +1,39 @@
+/*!
+ * Copyright (c) 2015 by Contributors
+ * \file activation.cc
+ * \brief activation op
+ * \author Bing Xu
+*/
+#include "./quantized_relu-inl.h"
+
+namespace mxnet {
+namespace op {
+
+template<>
+Operator *CreateOp<cpu>(int dtype) {
+  LOG(FATAL) << "not implemented yet";
+  Operator *op = NULL;
+  // MSHADOW_TYPE_SWITCH(dtype, DType, {
+  //   op = new QuantizedReluOp<DType>();
+  // })
+  return op;
+}
+
+// DO_BIND_DISPATCH comes from operator_common.h
+Operator *QuantizedReluProp::CreateOperatorEx(Context ctx,
+                                           std::vector<TShape> *in_shape,
+                                           std::vector<int> *in_type) const {
+  std::vector<TShape> out_shape, aux_shape;
+  std::vector<int> out_type, aux_type;
+  CHECK(InferType(in_type, &out_type, &aux_type));
+  CHECK(InferShape(in_shape, &out_shape, &aux_shape));
+  DO_BIND_DISPATCH(CreateOp, (*in_type)[0]);
+}
+
+MXNET_REGISTER_OP_PROPERTY(quantized_relu, QuantizedReluProp)
+.describe(R"code(Applies an activation function element-wise to the input.
+)code" ADD_FILELINE)
+.add_argument("data", "NDArray-or-Symbol", "Input array to activation function.");
+
+}  // namespace op
+}  // namespace mxnet
