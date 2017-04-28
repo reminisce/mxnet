@@ -477,9 +477,9 @@ void DotBackward_(const nnvm::NodeAttrs& attrs,
   }
 }
 
-bool DotForwardInferStorageType(const nnvm::NodeAttrs& attrs,
-                                std::vector<int> *in_attrs,
-                                std::vector<int> *out_attrs) {
+inline bool DotForwardInferStorageType(const nnvm::NodeAttrs& attrs,
+                                       std::vector<int> *in_attrs,
+                                       std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 2U);
   CHECK_EQ(out_attrs->size(), 1U);
   // dot(csr, dns) = rsp is a requirement from users
@@ -492,9 +492,9 @@ bool DotForwardInferStorageType(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
-bool DotBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
-                                 std::vector<int> *in_attrs,
-                                 std::vector<int> *out_attrs) {
+inline bool DotBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
+                                        std::vector<int> *in_attrs,
+                                        std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 2U);
   if (kDefaultStorage == in_attrs->at(0)
