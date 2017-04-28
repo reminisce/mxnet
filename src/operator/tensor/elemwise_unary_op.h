@@ -202,8 +202,7 @@ void CastStorageDnsRspImpl(const OpContext& ctx, const TBlob& dns, NDArray* rsp)
   CHECK_EQ(dns.shape_, rsp->shape());
 
   mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-  // TODO(junwu): allocate row_idx array for rsp with size=dns.shape[0]
-  // rsp->AllocAuxData(rowsparse::kIdx, mshadow::Shape1(dns.shape_[0]));
+  rsp->CheckAndAllocAuxData(rowsparse::kIdx, mshadow::Shape1(dns.shape_[0]));
   MSHADOW_TYPE_SWITCH(dns.type_flag_, DType, {  // data type
     NDARRAY_IDX_TYPE_SWITCH(rsp->aux_type(rowsparse::kIdx), RType, {  // row idx type
       RType* row_idx = rsp->aux_data(rowsparse::kIdx).dptr<RType>();
@@ -219,9 +218,8 @@ void CastStorageDnsRspImpl(const OpContext& ctx, const TBlob& dns, NDArray* rsp)
         if (row_idx[i] < static_cast<RType>(num_rows)) ++nnr;
       }
       if (0 == nnr) return;  // zero matrix
-      // TODO(junwu): allocate data array for rsp
-      // rsp->AllocData(Shape2(nnr, num_cols));
-      // single thread for compressing row_idx and copying data
+      rsp->CheckAndAllocData(mshadow::Shape2(nnr, num_cols));
+      // TODO(junwu): single thread for compressing row_idx and copying data
       // from dns to rsp, might be a bottleneck.
       auto in_tensor = dns.FlatTo2D<xpu, DType>(s);
       auto out_tensor = rsp->data().FlatTo2D<xpu, DType>(s);

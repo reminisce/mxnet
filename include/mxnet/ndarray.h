@@ -665,7 +665,6 @@ class NDArray {
       // calculate size, perform allocation
       if (delay_alloc) {
         if (kRowSparseStorage == storage_type) {
-          CHECK_EQ(storage_type, kRowSparseStorage) << "Not yet implemented";
           // For row sparse, aux_shape indicates the number of rows to allocate
           auto aux_shape = aux_shapes[rowsparse::kIdx];
           CHECK_EQ(shape.ndim(), 2) << "High dim RowSparse not yet implemented";
@@ -674,23 +673,9 @@ class NDArray {
           storage_shape[0] = aux_shape[0];
           CheckAndAllocData(storage_shape, dtype);
         } else if (kCSRStorage == storage_type) {
-          CHECK_EQ(aux_shapes.size(), 2U);
-          CHECK_GT(aux_shapes[csr::kIndPtr].Size(), 0U);
-          CHECK_EQ(aux_shapes[csr::kIndPtr].ndim(), 1);
-          CHECK_EQ(aux_shapes[csr::kIdx].ndim(), 1);
-          auto num_rows = aux_shapes[csr::kIndPtr].Size() - 1;
-          auto nnz = aux_shapes[csr::kIdx].Size();
-          auto data_bytes = nnz * mshadow::mshadow_sizeof(dtype);  // data bytes
-          auto indptr_bytes = (num_rows + 1) * mshadow::mshadow_sizeof(
-              aux_types[csr::kIndPtr]);  // indptr bytes
-          auto col_idx_bytes = nnz * mshadow::mshadow_sizeof(
-              aux_types[csr::kIdx]);  // col idx bytes
-          shandle = Storage::Get()->Alloc(data_bytes, ctx);
-          aux_handles.push_back(Storage::Get()->Alloc(indptr_bytes, ctx));
-          aux_handles.push_back(Storage::Get()->Alloc(col_idx_bytes, ctx));
-          delay_alloc = false;
-          this->aux_shapes = aux_shapes;
-          storage_shape = aux_shapes[csr::kIdx];
+          CheckAndAllocAuxData(csr::kIndPtr, aux_shapes[csr::kIndPtr]);
+          CheckAndAllocAuxData(csr::kIdx, aux_shapes[csr::kIdx]);
+          CheckAndAllocData(aux_shapes[csr::kIdx], dtype);
         } else {
           LOG(FATAL) << "Storage type " << storage_type << " not implemented for CheckAndAlloc";
         }
@@ -705,7 +690,14 @@ class NDArray {
       delay_alloc = false;
     }
     inline void CheckAndAllocAuxData(size_t i, const TShape &shape) {
+      CHECK_GT(shape.Size(), 0) << "shape cannot be empty in CheckAndAllocAuxData";
+      CHECK_EQ(shape.ndim(), 1) << "shape must be 1D in CheckAndAllocAuxData";
       CHECK_EQ(aux_shapes.size(), aux_handles.size());
+      CHECK_NE(storage_type, kUndefinedStorage)
+        << "storage type cannot be kUndefinedStorage in CheckAndAllocAuxData";
+      CHECK_NE(storage_type, kDefaultStorage)
+        << "storage type cannot be kDefaultStorage in CheckAndAllocAuxData";
+
       if (aux_shapes.size() <= i) {
         aux_shapes.resize(i + 1);
         aux_handles.resize(i + 1);
@@ -713,14 +705,8 @@ class NDArray {
       // Initialize shape
       aux_shapes[i] = shape;
       // Init aux storage
-      Storage::Handle aux_handle;
-      if (storage_type == kRowSparseStorage) {
-        auto aux_bytes = shape[0] * mshadow::mshadow_sizeof(aux_types[i]);
-        aux_handle = Storage::Get()->Alloc(aux_bytes, ctx);
-      } else if (storage_type == kCSRStorage) {
-        LOG(FATAL) << "Not implemented";
-      }
-      aux_handles[i] = aux_handle;
+      size_t aux_bytes = shape.Size() * mshadow::mshadow_sizeof(aux_types[i]);
+      aux_handles[i] = Storage::Get()->Alloc(aux_bytes, ctx);
     }
     /*! \brief destructor */
     ~Chunk() {
