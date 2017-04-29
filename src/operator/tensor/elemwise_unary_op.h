@@ -156,7 +156,6 @@ struct CastStorageParam : public dmlc::Parameter<CastStorageParam> {
   int storage_type;
   DMLC_DECLARE_PARAMETER(CastStorageParam) {
     DMLC_DECLARE_FIELD(storage_type)
-    .set_default(kUndefinedStorage)
     .add_enum("dns", kDefaultStorage)
     .add_enum("rsp", kRowSparseStorage)
     .add_enum("csr", kCSRStorage)
@@ -236,6 +235,35 @@ void CastStorageDnsRspImpl(const OpContext& ctx, const TBlob& dns, NDArray* rsp)
       }
       // update effective size (not capacity) of the row_idx of rsp
       rsp->SetAuxShape(rowsparse::kIdx, mshadow::Shape1(last_nnr_id+1));
+    });
+  });
+}
+
+/*!
+ * \brief This function assumes that the meomry for dns has been allocated already
+ * since the shape is known at binding stage.
+ */
+template<typename xpu>
+void CastStorageRspDnsImpl(const OpContext& ctx, const NDArray& rsp, TBlob* dns) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(rsp.storage_type(), kRowSparseStorage);
+  MSHADOW_TYPE_SWITCH(dns->type_flag_, DType, {
+    MSHADOW_TYPE_SWITCH(rsp.aux_type(rowsparse::kIdx), IType, {
+      // assign zeros
+      mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(s, dns->Size(), dns->dptr<DType>());
+      // data() is not empty
+      if (rsp.storage_shape().ndim() != 0) {
+        // Copy over
+        auto in_data = rsp.data().FlatTo2D<xpu, DType>(s);
+        auto out_data = dns->FlatTo2D<xpu, DType>(s);
+        auto num_rows = rsp.aux_shape(rowsparse::kIdx)[0];
+        auto in_idx = rsp.aux_data(rowsparse::kIdx).FlatTo1D<xpu, IType>(s);
+        for (size_t i = 0; i < num_rows; i += 1) {
+          mshadow::Copy(out_data[in_idx[i]], in_data[i], s);
+        }
+      }
     });
   });
 }
@@ -345,30 +373,61 @@ void CastStorageDnsCsrImpl(const OpContext& ctx, const TBlob& dns, NDArray* csr)
 }
 
 /*!
- * \brief This function assumes that the meomry for dns has been allocated already
- * since the shape is known at binding stage.
+ * \brief This is the kernel for copying csr.data to its corresponding dns tensor.
+ */
+struct CopyCsrDataToDns {
+  /*!
+   * \brief
+   * \param i the i-th row of the dns tensor
+   * \param dns_data data blob of the dns tensor
+   * \param col_idx column idx array of the csr
+   * \param indptr indptr array of the csr
+   * \param csr_data data blob of the csr tensor
+   * \param num_cols number of columns of the dns
+   */
+  template<typename DType, typename IType, typename CType>
+  MSHADOW_XINLINE static void Map(int i, DType* dns_data, const CType* col_idx,
+                                  const IType* indptr, const DType* csr_data,
+                                  const int num_cols) {
+    const int offset = i * num_cols;
+    for (auto j = indptr[i]; j < indptr[i+1]; ++j) {
+      dns_data[offset+col_idx[j]] = csr_data[j];
+    }
+  }
+};
+
+/*!
+ * \brief
+ * Given a CSR storage type tensor, create a DNS type sparse tensor from it.
+ * This assumes that the memory of dns.data() has been allocated in binding stage.
+ * TODO(junwu): The argument type for the dense ndarray is TBlob instead
+ * of NDArray since it's convenient to call this function from any
+ * operator's Forward/Backward functions where dev_id is unknown
+ * but required to wrap a TBlob object as an NDArray. See the use case
+ * in DotForwardCsrDnsRsp in matrix_op-inl.h.
+ * Will revisit this interface in the future.
  */
 template<typename xpu>
-void CastStorageRspDnsImpl(const OpContext& ctx, const NDArray& rsp, TBlob* dns) {
-  using namespace mshadow;
-  using namespace mshadow::expr;
-  Stream<xpu> *s = ctx.get_stream<xpu>();
-  CHECK_EQ(rsp.storage_type(), kRowSparseStorage);
-  MSHADOW_TYPE_SWITCH(dns->type_flag_, DType, {
-    MSHADOW_TYPE_SWITCH(rsp.aux_type(rowsparse::kIdx), IType, {
-      // assign zeros
-      mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(s, dns->Size(), dns->dptr<DType>());
-      // data() is not empty
-      if (rsp.storage_shape().ndim() != 0) {
-        // Copy over
-        auto in_data = rsp.data().FlatTo2D<xpu, DType>(s);
-        auto out_data = dns->FlatTo2D<xpu, DType>(s);
-        auto num_rows = rsp.aux_shape(rowsparse::kIdx)[0];
-        auto in_idx = rsp.aux_data(rowsparse::kIdx).FlatTo1D<xpu, IType>(s);
-        for (size_t i = 0; i < num_rows; i += 1) {
-          mshadow::Copy(out_data[in_idx[i]], in_data[i], s);
-        }
-      }
+void CastStorageCsrDnsImpl(const OpContext& ctx, const NDArray& csr, TBlob* dns) {
+  CHECK(dns != nullptr);
+  CHECK_EQ(csr.storage_type(), kCSRStorage);
+  CHECK_EQ(dns->shape_.ndim(), 2);
+  CHECK_EQ(dns->shape_, csr.shape());
+
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  MSHADOW_TYPE_SWITCH(dns->type_flag_, DType, {  // data type
+    NDARRAY_IDX_TYPE_SWITCH(csr.aux_type(csr::kIndPtr), IType, {  // indptr type
+      NDARRAY_IDX_TYPE_SWITCH(csr.aux_type(csr::kIdx), CType, {  // col idx type
+        const index_t num_rows = dns->shape_[0];
+        const index_t num_cols = dns->shape_[1];
+        DType* dns_data = dns->dptr<DType>();
+        mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(s, dns->shape_.Size(), dns_data);
+        const IType* indptr = csr.aux_data(csr::kIndPtr).dptr<IType>();
+        const CType* col_idx = csr.aux_data(csr::kIdx).dptr<CType>();
+        const DType* csr_data = csr.data().dptr<DType>();
+        mxnet_op::Kernel<CopyCsrDataToDns, xpu>::Launch(s, num_rows, dns_data,
+            col_idx, indptr, csr_data, num_cols);
+      });
     });
   });
 }
@@ -378,14 +437,14 @@ inline bool CastStorageInferStorageType(const nnvm::NodeAttrs& attrs,
                                         std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 1U);
   CHECK_EQ(out_attrs->size(), 1U);
-  CHECK_NE(in_attrs->at(0), -1)
-    << "src ndarray's storage type must be specified";
   CHECK_NE(in_attrs->at(0), kUndefinedStorage)
-    << "src ndarray's storage type must be well defined";
+    << "src ndarray's storage type must be specified";
   const CastStorageParam& param = nnvm::get<CastStorageParam>(attrs.parsed);
   CHECK_NE(param.storage_type, kUndefinedStorage)
-    << "dst ndarray's storage type must be well defined";
-  TYPE_ASSIGN_CHECK(*out_attrs, 0, param.storage_type);
+    << "dst ndarray's storage type must be specified";
+  // TODO(junwu): remove the following line and use TYPE_ASSIGN_CHECK
+  out_attrs->at(0) = param.storage_type;
+  //TYPE_ASSIGN_CHECK(*out_attrs, 0, param.storage_type);
   return true;
 }
 
@@ -411,6 +470,9 @@ void CastStorageComputeEx(const nnvm::NodeAttrs& attrs,
   } else if (src_stype == kDefaultStorage && dst_stype == kCSRStorage) {
     NDArray ret = outputs[0];  // get rid of the const qualifer
     CastStorageDnsCsrImpl<xpu>(ctx, inputs[0].data(), &ret);
+  } else if (src_stype == kCSRStorage && dst_stype == kDefaultStorage) {
+    TBlob ret = outputs[0].data();
+    CastStorageCsrDnsImpl<xpu>(ctx, inputs[0], &ret);
   } else {
     LOG(FATAL) << "Not implemented";
   }

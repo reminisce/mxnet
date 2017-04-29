@@ -132,7 +132,6 @@ class NDArray {
 #if MKL_EXPERIMENTAL == 1
       Mkl_mem_ = std::make_shared<MKLMemHolder>();
 #endif
-      CHECK(storage_type == kRowSparseStorage) << "Only kRowSparseStorage is supported";
   }
   /*!
    * \brief constructing a static NDArray that shares data with TBlob
