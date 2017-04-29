@@ -7,6 +7,7 @@ from ..ndarray_doc import _build_doc
 
 include "./base.pyi"
 
+#TODO Also apply the same changes to this file
 cdef class NDArrayBase:
     """Symbol is symbolic graph."""
     # handle for symbolic operator.
@@ -187,7 +188,6 @@ cdef _make_ndarray_function(OpHandle handle, string name):
     generic_ndarray_function.__doc__ = doc_str
     generic_ndarray_function.__module__ = 'mxnet.ndarray'
     return generic_ndarray_function
-
 
 def _init_ndarray_module(nd_class, root_namespace):
     """List and add all the atomic symbol functions to current module."""

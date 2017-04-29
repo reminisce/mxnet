@@ -101,6 +101,7 @@ def test_save_load():
     dict_equ(mod.get_params()[0], mod2.get_params()[0])
     dict_equ(mod._kvstore._updater.states, mod2._updater.states)
 
+
 def test_module_reshape():
     data = mx.sym.Variable('data')
     sym = mx.sym.FullyConnected(data, num_hidden=20, name='fc')

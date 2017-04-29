@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import mxnet as mx
 
 def test_ctx_group():
@@ -32,5 +33,35 @@ def test_ctx_group():
         else:
             assert arr.context == group2ctx['stage2']
 
+def check_ctx_group_sparse(mode='dense_sparse'):
+    # Input Data
+    dense_np = np.array([[1,2],[3,4],[5,6]])
+    sparse_np1 = np.array([[5,10],[0,0],[0,0]])
+    dense_nd = mx.nd.array(dense_np)
+    val = mx.nd.array([[5, 10]]);
+    idx = mx.nd.array([0], dtype=np.int32);
+    sparse_nd1 = mx.sparse_nd.row_sparse(val, idx, (3,2))
+    sparse_nd2 = mx.sparse_nd.row_sparse(val, idx, (3,2))
+
+    # Symbols
+    if mode == 'dense_dense':
+      data1 = mx.symbol.Variable('data1')
+      data2 = mx.symbol.Variable('data2')
+    elif mode == 'dense_sparse':
+      data1 = mx.symbol.Variable('data1')
+      data2 = mx.symbol.Variable('data2', storage_type='row_sparse')
+
+    mlp  = mx.symbol.elemwise_add(data1, data2, name='plus')
+    texec = mlp.simple_bind(mx.cpu(0), data1=(3,2), data2=(3,2))
+    output = texec.forward()
+
+'''
+This tests the simple bind function
+'''
+def test_ctx_group_sparse():
+    check_ctx_group_sparse('dense_sparse')
+    check_ctx_group_sparse('dense_dense')
+
 if __name__ == '__main__':
     test_ctx_group()
+    test_ctx_group_sparse()

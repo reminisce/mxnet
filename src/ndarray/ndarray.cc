@@ -27,6 +27,7 @@ NDArray NDArray::Reshape(const TShape &shape) const {
   using namespace autograd;
   CHECK_GE(shape_.Size(), shape.Size())
       << "NDArray.Reshape: target shape size is different from current shape";
+  CHECK(storage_type() == kDefaultStorage) << "Not implemented yet";
   NDArray ret = *this;
   ret.shape_ = shape;
   if (AutogradRuntime::Get()->IsTraining()) {
@@ -50,15 +51,25 @@ NDArray NDArray::Reshape(const TShape &shape) const {
   }
 }
 
-
 NDArray NDArray::Slice(index_t begin, index_t end) const {
   using namespace autograd;
   NDArray ret = *this;
   CHECK(!is_none()) << "NDArray is not initialized";
   CHECK_GE(shape_[0], end) << "Slice end index out of range";
-  size_t length = shape_.ProdShape(1, shape_.ndim());
-  ret.offset_ += begin * length;
-  ret.shape_[0] = end - begin;
+  auto stype = storage_type();
+  if (stype == kDefaultStorage) {
+    size_t length = shape_.ProdShape(1, shape_.ndim());
+    ret.offset_ += begin * length;
+    ret.shape_[0] = end - begin;
+  } else if (stype == kCSRStorage) {
+    // for csr, the offset variable is used to adjust indptr
+    // while getting aux_data, the dptr of indptr is advanced by offset,
+    // and shape for indptr is end - begin + 1
+    ret.offset_ += begin;
+    ret.shape_[0] = end - begin;
+  } else {
+    LOG(FATAL) << "Slice not yet implemented for storage " << stype;
+  }
   if (AutogradRuntime::Get()->IsTraining()) {
     // fake a slice_axis op
     ret.entry_.clear();
@@ -80,8 +91,9 @@ NDArray NDArray::Slice(index_t begin, index_t end) const {
   }
 }
 
-
 NDArray NDArray::At(index_t idx) const {
+  CHECK(storage_type() == kDefaultStorage) << "Storage type "
+                                           << storage_type() << " doesn't support At()";
   NDArray ret = this->Slice(idx, idx+1);
   if (shape_.ndim() > 1) {
     return ret.Reshape(TShape(shape_.data()+1, shape_.data()+shape_.ndim()));
@@ -190,11 +202,11 @@ void BinaryOp(const NDArray &lhs,
   // redirect everything to mshadow operations
   switch (lhs.ctx().dev_mask()) {
     case cpu::kDevMask: {
-      Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
-          TBlob tmp = ret.data();
-          ndarray::Eval<cpu, OP>(lhs.data(), rhs.data(), &tmp, ctx);
-        }, lhs.ctx(), const_vars, {ret.var()},
-        FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+        Engine::Get()->PushSync([lhs, rhs, ret](RunContext ctx) {
+            TBlob tmp = ret.data();
+            ndarray::Eval<cpu, OP>(lhs.data(), rhs.data(), &tmp, ctx);
+          }, lhs.ctx(), const_vars, {ret.var()},
+          FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
       break;
     }
 #if MXNET_USE_CUDA
@@ -220,6 +232,7 @@ void SetValueOp(const real_t &rhs, NDArray *out) {
   switch (ret.ctx().dev_mask()) {
     case cpu::kDevMask: {
       Engine::Get()->PushSync([rhs, ret](RunContext ctx) {
+          CHECK(ret.storage_type() == kDefaultStorage);
           TBlob tmp = ret.data();
           ndarray::Eval<cpu>(rhs, &tmp, ctx);
         }, ret.ctx(), {}, {ret.var()},
@@ -291,6 +304,7 @@ void ScalarOp(const NDArray &lhs,
   }
 }
 
+
 void CopyFromTo(const NDArray &from, NDArray *to, int priority) {
   if (from.var() == to->var()) {
     // skip to copy to itself
@@ -305,44 +319,33 @@ void CopyFromTo(const NDArray &from, NDArray *to, int priority) {
   NDArray ret = *to;
   int a = from.ctx().dev_mask();
   int b = to->ctx().dev_mask();
-
   std::vector<Engine::VarHandle> const_vars;
   if (from.var() != ret.var()) const_vars.push_back(from.var());
 
   if (a == cpu::kDevMask && b == cpu::kDevMask) {
     Engine::Get()->PushSync([from, ret](RunContext ctx) {
-        TBlob tmp = ret.data();
-        ndarray::Copy<cpu, cpu>(from.data(), &tmp,
-                                from.ctx(), ret.ctx(), ctx);
+        NDArray nd(ret);
+        CopyFromToImpl<cpu, cpu>(from, &nd, ctx);
       }, from.ctx(), const_vars, {ret.var()},
       FnProperty::kNormal, priority, PROFILER_MESSAGE("CopyCPU2CPU"));
   } else {
 #if MXNET_USE_CUDA
     if (a == cpu::kDevMask && b == gpu::kDevMask) {
       Engine::Get()->PushSync([from, ret](RunContext ctx) {
-          TBlob tmp = ret.data();
-          ndarray::Copy<cpu, gpu>(from.data(), &tmp,
-                                  from.ctx(), ret.ctx(), ctx);
-          // Wait GPU kernel to complete
-          ctx.get_stream<gpu>()->Wait();
+          NDArray nd(ret);
+          CopyFromToImpl<cpu, gpu>(from, &nd, ctx);
         }, ret.ctx(), const_vars, {ret.var()},
         FnProperty::kCopyToGPU, priority, PROFILER_MESSAGE("CopyCPU2GPU"));
     } else if (a == gpu::kDevMask && b == cpu::kDevMask) {
       Engine::Get()->PushSync([from, ret](RunContext ctx) {
-          TBlob tmp = ret.data();
-          ndarray::Copy<gpu, cpu>(from.data(), &tmp,
-                                  from.ctx(), ret.ctx(), ctx);
-          // Wait GPU kernel to complete
-          ctx.get_stream<gpu>()->Wait();
+          NDArray nd(ret);
+          CopyFromToImpl<gpu, cpu>(from, &nd, ctx);
         }, from.ctx(), const_vars, {ret.var()},
         FnProperty::kCopyFromGPU, priority, PROFILER_MESSAGE("CopyGPU2CPU"));
     } else if (a == gpu::kDevMask && b == gpu::kDevMask) {
       Engine::Get()->PushSync([from, ret](RunContext ctx) {
-          TBlob tmp = ret.data();
-          ndarray::Copy<gpu, gpu>(from.data(), &tmp,
-                                  from.ctx(), ret.ctx(), ctx);
-          // Wait GPU kernel to complete
-          ctx.get_stream<gpu>()->Wait();
+          NDArray nd(ret);
+          CopyFromToImpl<gpu, gpu>(from, &nd, ctx);
         }, from.ctx(), const_vars, {ret.var()},
         from.dtype() != ret.dtype() ? FnProperty::kNormal : FnProperty::kCopyFromGPU,
         priority, PROFILER_MESSAGE("CopyGPU2GPU"));
