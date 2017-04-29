@@ -9,6 +9,7 @@
 
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
+#include <dmlc/omp.h>
 #include <mxnet/operator.h>
 #include <mxnet/operator_util.h>
 #include <map>
@@ -313,6 +314,133 @@ void EmbeddingOpBackward(const nnvm::NodeAttrs& attrs,
       }
     });
   });
+}
+
+template<int req>
+struct EmbeddingBackwardRsp {
+  template<typename DType, typename IType>
+  // each thread i is responsible for target gradient row ids in [segment_start, segment_end)
+  MSHADOW_XINLINE static void Map(int i, const size_t width, IType* dst_idx, DType* dst_val,
+                                  const IType* idx, const size_t num_idx, const DType* src,
+                                  const size_t segment_len, const size_t num_rows) {
+    auto req_type = req;
+    size_t segment_start = i * segment_len;
+    size_t segment_end = (i + 1) * segment_len;
+    for (size_t y = 0; y < num_idx; y++) {
+      size_t j = idx[y];
+      if (j >= num_rows) j = num_rows - 1;
+      if (j < segment_start || j >= segment_end) continue;
+      dst_idx[j] = j;
+      for (size_t k = 0; k < width; k++) {
+        if (req_type == kWriteTo) req_type = kAddTo;
+        KERNEL_ASSIGN(dst_val[j * width + k], req_type, src[y * width + k]);
+      }
+    }
+  }
+};
+
+/*
+ * for sparse embedding, the storage type for weight gradient is row_sparse.
+ * we don't care about the storage type for data gradient, since it is not
+ * differentiable.
+ */
+inline bool SparseEmbeddingBackwardStorageType(const nnvm::NodeAttrs& attrs,
+                         std::vector<int> *in_attrs,
+                         std::vector<int> *out_attrs) {
+  CHECK_EQ((*in_attrs)[0], kDefaultStorage);
+  CHECK_EQ((*in_attrs)[1], kDefaultStorage);
+  (*out_attrs)[0] = kRowSparseStorage;
+  (*out_attrs)[1] = kRowSparseStorage;
+  return true;
+}
+
+template<typename xpu>
+void SparseEmbeddingOpBackwardDnsDnsRsp(const nnvm::NodeAttrs& attrs,
+                               const OpContext& ctx,
+                               const std::vector<NDArray>& inputs,
+                               const std::vector<OpReqType>& req,
+                               const std::vector<NDArray>& outputs) {
+  using namespace mshadow;
+  using namespace mxnet_op;
+  using namespace mshadow::expr;
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 2U);
+  if (req[1] == kNullOp) return;
+  // check storage types
+  auto idx = inputs[1];  // idx shape (d1, d2 .. dk)
+  auto grad = inputs[0];  // grad shape (d1, d2, .. dk, out_dim)
+  auto output = outputs[1];  // weight shape (in_dim, out_dim)
+  CHECK_EQ(idx.storage_type(), kDefaultStorage);
+  CHECK_EQ(grad.storage_type(), kDefaultStorage);
+  CHECK_EQ(output.dtype(), grad.dtype());
+  CHECK_EQ(idx.dtype(), output.aux_type(rowsparse::kIdx)) << "Index type doesn't match";
+  // CHECK_EQ(req[embedding::kData], kNullOp)
+  //       << "Embedding layer doesn't support calculate data gradient" << req[embedding::kData];
+
+  const TShape& ishape = idx.shape();
+  const TShape& oshape = grad.shape();
+
+  Stream<xpu> *s = ctx.get_stream<xpu>();
+  CHECK_EQ(idx.dtype(), output.aux_type(rowsparse::kIdx))
+           << "embedding input index and gradient row sparse type doesn't match!";
+  // Alloc dense output
+  unsigned int num_rows = output.shape()[0];
+  output.CheckAndAlloc({mshadow::Shape1(num_rows)});
+  MSHADOW_TYPE_SWITCH(output.dtype(), DType, {
+    MSHADOW_INT_TYPE_SWITCH(idx.dtype(), IType, {
+      MXNET_ASSIGN_REQ_SWITCH(req[1], req_type, {
+        // input embedding indice, each idx in [0, input_dim)
+        auto idx_data = idx.data().FlatTo1D<xpu, IType>(s);
+        auto grad_data = grad.data().get_with_shape<xpu, 2, DType>(
+          Shape2(oshape.ProdShape(0, oshape.ndim()-1), oshape[oshape.ndim()-1]), s);
+        auto output_idx = output.aux_data(rowsparse::kIdx).FlatTo1D<xpu, IType>(s);
+        auto output_val = output.data().FlatTo2D<xpu, DType>(s);
+        int num_threads = omp_get_num_threads();
+        size_t width = output.shape()[1];
+        size_t segment_len = (num_rows + num_threads - 1) / num_threads;
+        // fill indices with invalid row ids
+        Kernel<mxnet_op::fill, xpu>::Launch(s, num_rows, output_idx.dptr_,
+                                            static_cast<IType>(num_rows));
+        // fill zeros if needed
+        if (req_type == kWriteTo) {
+          Kernel<mxnet_op::set_zero, xpu>::Launch(s, output_val.shape_.Size(), output_val.dptr_);
+        }
+        Kernel<EmbeddingBackwardRsp<req_type>, xpu>::Launch(s, num_threads, width,
+                                                            output_idx.dptr_,
+                                                            output_val.dptr_, idx_data.dptr_,
+                                                            ishape.Size(), grad_data.dptr_,
+                                                            segment_len, num_rows);
+      });
+    });
+  });
+}
+
+// todo replace xpu with cpu
+template<typename xpu>
+void SparseEmbeddingOpBackwardEx(const nnvm::NodeAttrs& attrs,
+                               const OpContext& ctx,
+                               const std::vector<NDArray>& inputs,
+                               const std::vector<OpReqType>& req,
+                               const std::vector<NDArray>& outputs) {
+  using namespace mshadow;
+  using namespace mxnet_op;
+  using namespace mshadow::expr;
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 2U);
+  // CHECK_EQ(req[embedding::kData], kNullOp)
+  //       << "Embedding layer doesn't support calculate data gradient" << req[0] << " " << req[1];
+  // idx shape (d1, d2 .. dk)
+  auto idx_stype = inputs[1].storage_type();
+  // grad shape (d1, d2, .. dk, out_dim)
+  auto grad_stype = inputs[0].storage_type();
+  // weight shape (in_dim, out_dim)
+  auto output_stype = outputs[1].storage_type();
+  if (idx_stype == kDefaultStorage && grad_stype == kDefaultStorage &&
+      output_stype == kRowSparseStorage) {
+    SparseEmbeddingOpBackwardDnsDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+  } else {
+    LOG(FATAL) << "Not implemented";
+  }
 }
 
 namespace take_ {  // to avoid name conflict
