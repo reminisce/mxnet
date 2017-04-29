@@ -10,8 +10,10 @@ import subprocess
 import os
 import errno
 import logging
+import scipy as sp
 import numpy as np
 import numpy.testing as npt
+import numpy.random as rnd
 import mxnet as mx
 from .context import Context
 from .ndarray import array
@@ -65,6 +67,39 @@ def random_arrays(*shapes):
         return arrays[0]
     return arrays
 
+# TODO(haibin) also include types in arguments
+def rand_sparse_ndarray(shape, storage_type, density=None):
+    """Generate a random sparse ndarray. Returns the ndarray, value(np) and indices(np) """
+    density = rnd.rand() if density is None else density
+    if storage_type == 'row_sparse':
+        # TODO(haibin) support high dim sparse ndarray
+        assert(len(shape) < 3)
+        prod = np.prod(shape)
+        num_cols = int(prod / shape[0])
+        # sample index
+        idx_sample = rnd.rand(shape[0])
+        indices = np.argwhere(idx_sample < density).flatten()
+        if indices.shape[0] == 0:
+            result = mx.sparse_nd.zeros('row_sparse', shape)
+            return result, (np.array([]), np.array([], dtype='int32'))
+        # generate random values
+        val = rnd.rand(indices.shape[0], num_cols)
+        arr = mx.sparse_nd.row_sparse(val, indices, shape, indices_type=np.int32)
+        return arr, (val, indices)
+    elif storage_type == 'csr':
+        assert(len(shape) == 2)
+        csr = sp.sparse.rand(shape[0], shape[1], density=density, format='csr')
+        result = mx.sparse_nd.csr(csr.data, csr.indptr, csr.indices, shape)
+        return result, (csr.indptr, csr.indices, csr.data)
+    else:
+        assert(False), "unknown storage type"
+
+def rand_ndarray(shape, storage_type, density=None):
+    if storage_type == 'default_storage':
+        arr = mx.nd.array(random_arrays(shape))
+    else:
+        arr, _ = rand_sparse_ndarray(shape, storage_type, density=density)
+    return arr
 
 def np_reduce(dat, axis, keepdims, numpy_reduce_func):
     """Compatible reduce for old version of NumPy.
@@ -297,7 +332,8 @@ def _parse_location(sym, location, ctx):
                              % (str(set(sym.list_arguments())), str(set(location.keys()))))
     else:
         location = {k: v for k, v in zip(sym.list_arguments(), location)}
-    location = {k: mx.nd.array(v, ctx=ctx) for k, v in location.items()}
+    location = {k: mx.nd.array(v, ctx=ctx) if isinstance(v, np.ndarray) \
+               else v for k, v in location.items()}
     return location
 
 
@@ -588,8 +624,8 @@ def check_symbolic_forward(sym, location, expected, rtol=1E-4, atol=None,
         g[:] = 0
 
     executor.forward(is_train=False)
-    outputs = [x.asnumpy() for x in executor.outputs]
 
+    outputs = [x.asnumpy() for x in executor.outputs]
     for output_name, expect, output in zip(sym.list_outputs(), expected, outputs):
         assert_almost_equal(expect, output, rtol, atol,
                             ("EXPECTED_%s"%output_name, "FORWARD_%s"%output_name))
@@ -657,14 +693,29 @@ def check_symbolic_backward(sym, location, out_grads, expected, rtol=1e-5, atol=
     if isinstance(expected, (list, tuple)):
         expected = {k:v for k, v in zip(sym.list_arguments(), expected)}
     args_grad_npy = {k:_rng.normal(size=v.shape) for k, v in expected.items()}
-    args_grad_data = {k: mx.nd.array(v, ctx=ctx) for k, v in args_grad_npy.items()}
+    # args_grad_data should be casted to storage type if hinted
+    # TODO(haibin) this is a temporary solution for testing. remove later
+    attrs = sym.attr_dict()
+    args_grad_data = {}
+    for k, v in args_grad_npy.items():
+        attr = attrs.get(k, {})
+        grad_stype = attr.get('grad_stype_hint', None)
+        nd = mx.nd.array(v, ctx=ctx)
+        if grad_stype is not None:
+            out = mx.nd.cast_storage(nd, storage_type=grad_stype)
+            args_grad_data[k] = out
+        else:
+            args_grad_data[k] = nd
+
     if isinstance(grad_req, str):
         grad_req = {k:grad_req for k in sym.list_arguments()}
     elif isinstance(grad_req, (list, tuple)):
         grad_req = {k:v for k, v in zip(sym.list_arguments(), grad_req)}
 
-    executor = sym.bind(ctx=ctx, args=location, args_grad=args_grad_data, aux_states=aux_states)
+    executor = sym.bind(ctx=ctx, args=location, args_grad=args_grad_data,
+                        aux_states=aux_states, grad_req=grad_req)
     executor.forward(is_train=True)
+
     if isinstance(out_grads, (tuple, list)):
         out_grads = [mx.nd.array(v, ctx=ctx) for v in out_grads]
     elif isinstance(out_grads, (dict)):

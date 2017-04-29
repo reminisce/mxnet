@@ -18,11 +18,106 @@
 
 #include <dmlc/logging.h>
 #include <mxnet/engine.h>
+#include <mxnet/ndarray.h>
+#include <mxnet/op_attr_types.h>
+#include <nnvm/graph_attr_types.h>
 
 namespace mxnet {
+// forward declaration
+namespace op {
+template <typename xpu>
+void CastStorageComputeEx(const nnvm::NodeAttrs& attrs,
+                 const OpContext& ctx,
+                 const std::vector<NDArray>& inputs,
+                 const std::vector<OpReqType>& req,
+                 const std::vector<NDArray>& outputs);
+}
+
 namespace common {
 
 #if DMLC_USE_CXX11
+/*
+ * \brief Get input TBlobs from NDArrays, potentially performing cast_storage op and store
+ *        temporary NDArrays in temps. If storage_fallback is false,
+ *        MXNET_EXEC_STORAGE_FALLBACK env var determines whether storage type fallback is allowed.
+ */
+template <typename xpu>
+inline void GetInputBlobs(const std::vector<NDArray>& nds,
+                          std::vector<TBlob> *blobs,
+                          std::vector<NDArray> *temps,
+                          const OpContext& ctx,
+                          bool storage_fallback = false) {
+  if (storage_fallback == false) {
+    storage_fallback = dmlc::GetEnv("MXNET_EXEC_STORAGE_FALLBACK", true);
+  }
+  for (auto& nd : nds) {
+    if (nd.storage_type() != kDefaultStorage) {
+      if (storage_fallback == false) {
+        LOG(FATAL) << "Storage type conversion detected during execution. "
+                   << "You are probably executing an operator which "
+                   << "doesn't support NDArray inputs with non-default storage.";
+      }
+      NDArray temp(nd.shape(), nd.ctx(), false);
+      op::CastStorageComputeImpl<xpu>(ctx.get_stream<xpu>(), nd, temp);
+      temps->push_back(temp);
+      blobs->push_back(temp.data());
+    } else {
+      blobs->push_back(nd.data());
+    }
+  }
+}
+
+template <typename xpu>
+inline void GetOutputBlobs(const std::vector<NDArray>& nds,
+                           std::vector<TBlob> *blobs) {
+  for (auto& nd : nds) {
+    blobs->push_back(nd.data());
+  }
+}
+
+// Check if any storage type is not default storage
+inline bool ContainsNonDefaultStorage(const nnvm::StorageTypeVector& vstorage) {
+  for (auto& i : vstorage) {
+    if (i != kUndefinedStorage && i != kDefaultStorage) return true;
+  }
+  return false;
+}
+
+inline bool ContainsDefaultStorage(const std::vector<NDArray>& ndarrays) {
+  for (auto &nd : ndarrays) {
+    if (nd.storage_type() == kDefaultStorage) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline FCompute GetFCompute(const Op* op, Context ctx) {
+  static auto& fcompute_cpu = nnvm::Op::GetAttr<FCompute>("FCompute<cpu>");
+  static auto& fcompute_gpu = nnvm::Op::GetAttr<FCompute>("FCompute<gpu>");
+  if (ctx.dev_mask() == cpu::kDevMask) {
+    return fcompute_cpu.get(op, nullptr);
+  } else if (ctx.dev_mask() == gpu::kDevMask) {
+    return fcompute_gpu.get(op, nullptr);
+  }
+  LOG(FATAL) << "Unknown device mask";
+  return nullptr;
+}
+
+inline FComputeEx GetFComputeEx(const Op* op, Context ctx, int stype) {
+  static auto& fcpu = nnvm::Op::GetAttr<FComputeEx>(FCOMP_EX_CPU);
+  static auto& fgpu = nnvm::Op::GetAttr<FComputeEx>(FCOMP_EX_GPU);
+  if (stype == kDefaultStorage) return nullptr;
+  if (ctx.dev_mask() == cpu::kDevMask) {
+    return fcpu.get(op, nullptr);
+  } else if (ctx.dev_mask() == gpu::kDevMask) {
+    return fgpu.get(op, nullptr);
+  }
+  LOG(FATAL) << "Unknown device mask";
+  return nullptr;
+}
+
+
 // heuristic to dermine number of threads per GPU
 inline int GetNumThreadPerGPU() {
   // This is resource efficient option.

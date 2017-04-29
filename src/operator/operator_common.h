@@ -11,12 +11,15 @@
 #include <dmlc/json.h>
 #include <dmlc/logging.h>
 #include <mxnet/operator.h>
+#include <mxnet/ndarray.h>
+#include <mxnet/op_attr_types.h>
 #include <mxnet/base.h>
 #include <istream>
 #include <ostream>
 #include <string>
 #include <vector>
 #include "../common/cuda_utils.h"
+#include "../common/utils.h"
 
 namespace mxnet {
 namespace op {
@@ -314,6 +317,22 @@ inline void ParamParser(nnvm::NodeAttrs* attrs) {
   }
   attrs->parsed = std::move(param);
 }
+
+template <typename xpu>
+void FCompExFallback(const nnvm::NodeAttrs& attrs,
+                     const OpContext& ctx,
+                     const std::vector<NDArray>& inputs,
+                     const std::vector<OpReqType>& req,
+                     const std::vector<NDArray>& outputs,
+                     FCompute fcompute,
+                     const std::string& fname) {
+  std::vector<TBlob> in_blobs, out_blobs;
+  std::vector<NDArray> tmps;
+  common::GetInputBlobs<xpu>(inputs, &in_blobs, &tmps, ctx, true);
+  common::GetOutputBlobs<xpu>(outputs, &out_blobs);
+  fcompute(attrs, ctx, in_blobs, req, out_blobs);
+}
+
 
 }  // namespace op
 }  // namespace mxnet
