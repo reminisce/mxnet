@@ -668,17 +668,14 @@ struct DotCsrDnsRsp<false, false> {
    * \param indptr_l csr indptr of lhs
    * \param col_idx_l csr col_idx of lhs
    * \param data_r dense data of rhs
-   * \param aux_num_rows aux_shape number of rows of rhs data
    * \param num_cols number of columns of output
    */
   template<typename DType, typename RType, typename IType, typename CType>
   MSHADOW_XINLINE static void Map(int i, DType* out, const RType* row_idx, const DType* data_l,
                                   const IType* indptr_l, const CType* col_idx_l,
-                                  const DType* data_r, const int aux_num_rows,
-                                  const int num_cols) {
-    const int aux_row = i / aux_num_rows;
-    const int irow = row_idx[aux_row] / num_cols;  // row id of the lhs
-    const int icol = row_idx[aux_row] % num_cols;  // col id of the rhs
+                                  const DType* data_r, const int num_cols) {
+    const int irow = row_idx[i/num_cols];  // row id of the lhs
+    const int icol = i % num_cols;  // col id of the rhs
     for (IType j = indptr_l[irow]; j < indptr_l[irow+1]; ++j) {
       const CType cur_col = col_idx_l[j];  // corresponding row id of the rhs
       out[i] += data_l[j] * data_r[cur_col*num_cols+icol];
@@ -702,18 +699,15 @@ struct DotCsrDnsRsp<true, false> {
    * \param col_idx_l csr col_idx of lhs
    * \param data_r dense data of rhs
    * \param num_rows_l number of rows of lhs
-   * \param aux_num_rows number of non-zero rows of the output
    * \param num_cols number of columns of outputs
    */
   template<typename DType, typename RType, typename IType, typename CType>
   MSHADOW_XINLINE static void Map(int i, DType* out, const RType* row_idx,
                                   const DType* data_l, const IType* indptr_l,
                                   const CType* col_idx_l, const DType* data_r,
-                                  const int num_rows_l, const int aux_num_rows,
-                                  const int num_cols) {
-    const int aux_row = i / aux_num_rows;
-    const int irow = row_idx[aux_row] / num_cols;  // col id of the lhs
-    const int icol = row_idx[aux_row] % num_cols;  // col id of the rhs
+                                  const int num_rows_l, const int num_cols) {
+    const int irow = row_idx[i/num_cols];  // col id of the lhs
+    const int icol = i % num_cols;  // col id of the rhs
     for (int i = 0; i < num_rows_l; ++i) {
       const IType low = indptr_l[i];
       const IType high = indptr_l[i+1];
@@ -807,7 +801,7 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
             mxnet_op::Kernel<DotCsrDnsRsp<false, false>, xpu>::Launch(
                 s, data_out.Size(), data_out.dptr<DType>(), row_idx_out.dptr<RType>(),
                 data_l.dptr<DType>(), indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(),
-                data_r.dptr<DType>(), data_out.shape_[0], data_out.shape_[1]); 
+                data_r.dptr<DType>(), data_out.shape_[1]); 
           }
         });
       });

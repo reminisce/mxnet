@@ -41,6 +41,7 @@ NNVM_REGISTER_OP(_backward_slice_axis)
 
 NNVM_REGISTER_OP(dot)
 .set_attr<FCompute>("FCompute<gpu>", DotForward_<gpu>);
+.set_attr<FCompute>("FComputeEx<gpu>", DotForwardEx<gpu>);
 
 NNVM_REGISTER_OP(_backward_dot)
 .set_attr<FCompute>("FCompute<gpu>", DotBackward_<gpu>);
