@@ -1,12 +1,9 @@
 /*!
- * Copyright (c) 2015 by Contributors
- * \file activation.cu
+ * Copyright (c) 2017 by Contributors
+ * \file quantized_relu.cu
  * \brief
- * \author Bing Xu
+ * \author Ziheng Jiang
 */
-// #include <mshadow/base.h>
-// #include <mxnet/base.h>
-// #include <mxnet/operator.h>
 #include "./quantized_relu-inl.h"
 
 namespace mxnet {
@@ -19,12 +16,8 @@ class QuantizedReluCuDNNOp : public Operator {
   explicit QuantizedReluCuDNNOp() {
     init_cudnn_ = false;
     dtype_ = mshadow::DataType<DType>::kCudnnFlag;
-    mode_ = CUDNN_ACTIVATION_RELU;
+    mode_  = CUDNN_ACTIVATION_RELU;
     nan_prop_ = CUDNN_NOT_PROPAGATE_NAN;
-    CHECK_EQ(cudnnCreateActivationDescriptor(&desc_),
-             CUDNN_STATUS_SUCCESS);
-    CHECK_EQ(cudnnSetActivationDescriptor(desc_, mode_, nan_prop_, relu_ceil_),
-             CUDNN_STATUS_SUCCESS);
   }
 
   ~QuantizedReluCuDNNOp() {
@@ -56,24 +49,17 @@ class QuantizedReluCuDNNOp : public Operator {
     float beta = 0.0f;
     CHECK_EQ(s->dnn_handle_ownership_, Stream<gpu>::OwnHandle);
     if (!init_cudnn_) {
+      InitDescriptors(shape);
       init_cudnn_ = true;
-      CHECK_EQ(cudnnCreateTensorDescriptor(&shape_desc_), CUDNN_STATUS_SUCCESS);
-      CHECK_EQ(cudnnSetTensor4dDescriptor(shape_desc_,
-                                          CUDNN_TENSOR_NCHW,
-                                          dtype_,
-                                          shape[0],
-                                          shape[1],
-                                          shape[2],
-                                          shape[3]), CUDNN_STATUS_SUCCESS);
     }
-    CHECK_EQ(cudnnActivationForward(s->dnn_handle_,
-                                    desc_,
-                                    &alpha,
-                                    shape_desc_,
-                                    data.dptr_,
-                                    &beta,
-                                    shape_desc_,
-                                    out.dptr_), CUDNN_STATUS_SUCCESS);
+    CUDNN_CALL(cudnnActivationForward(s->dnn_handle_,
+                                      desc_,
+                                      &alpha,
+                                      shape_desc_,
+                                      data.dptr_,
+                                      &beta,
+                                      shape_desc_,
+                                      out.dptr_));
   }
 
   virtual void Backward(const OpContext &ctx,
@@ -92,6 +78,20 @@ class QuantizedReluCuDNNOp : public Operator {
   cudnnActivationDescriptor_t desc_;
   cudnnNanPropagation_t nan_prop_;
   double relu_ceil_;
+
+  void InitDescriptors(TShape shape) {
+    CHECK(!init_cudnn_);
+    CUDNN_CALL(cudnnCreateActivationDescriptor(&desc_));
+    CUDNN_CALL(cudnnSetActivationDescriptor(desc_, mode_, nan_prop_, relu_ceil_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&shape_desc_));
+    CUDNN_CALL(cudnnSetTensor4dDescriptor(shape_desc_,
+                                          CUDNN_TENSOR_NCHW,
+                                          dtype_,
+                                          shape[0],
+                                          shape[1],
+                                          shape[2],
+                                          shape[3]));
+  }
 };  // class QuantizedReluCuDNNOp
 
 

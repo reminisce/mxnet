@@ -39,9 +39,7 @@ class QuantizedLRNCuDNNOp : public Operator {
     Stream<gpu> *s = ctx.get_stream<gpu>();
     const TBlob& data = in_data[0];
     const TBlob& out = out_data[0];
-    if (!init_cudnn_) {
-      this->Init(s, in_data, out_data);
-    }
+    if (!init_cudnn_) this->Init(s, in_data, out_data);
     CHECK_EQ(s->dnn_handle_ownership_, mshadow::Stream<gpu>::OwnHandle);
     CUDNN_CALL(cudnnLRNCrossChannelForward(s->dnn_handle_,
                                            lrn_desc_,
