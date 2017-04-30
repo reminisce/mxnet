@@ -569,9 +569,9 @@ struct DotCsrDnsDns<true, false> {
                                   const int num_cols) {
     const int irow = i / num_cols;  // col id of the lhs
     const int icol = i % num_cols;  // col id of the rhs
-    for (int i = 0; i < num_rows_l; ++i) {
-      const IType low = indptr_l[i];
-      const IType high = indptr_l[i+1];
+    for (int k = 0; k < num_rows_l; ++k) {
+      const IType low = indptr_l[k];
+      const IType high = indptr_l[k+1];
       if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
       int j = -1, l = low, r = high - 1;
       while (l <= r) {
@@ -581,7 +581,7 @@ struct DotCsrDnsDns<true, false> {
         else r = m - 1;
       }
       if (j >= 0) {
-        out[i] += data_l[j] * data_r[i*num_cols+icol];
+        out[i] += data_l[j] * data_r[k*num_cols+icol];
       }
     }
   }
@@ -626,22 +626,6 @@ void DotCsrDnsDnsImpl(const OpContext& ctx,
       });
     });
   });
-}
-
-/*!
- * \brief Forward function of dot(csr, dns) = dns_out
- * and dot(csr.T(), dns) = dns_out
- * Must be called by DotForwardEx
- */
-template<typename xpu>
-void DotForwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
-                         const OpContext& ctx,
-                         const std::vector<NDArray>& inputs,
-                         const std::vector<OpReqType>& req,
-                         const std::vector<NDArray>& outputs) {
-  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
-  NDArray ret = outputs[0];  // get rid of the const qualifier
-  DotCsrDnsDnsImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
 }
 
 /*!
@@ -708,9 +692,9 @@ struct DotCsrDnsRsp<true, false> {
                                   const int num_rows_l, const int num_cols) {
     const int irow = row_idx[i/num_cols];  // col id of the lhs
     const int icol = i % num_cols;  // col id of the rhs
-    for (int i = 0; i < num_rows_l; ++i) {
-      const IType low = indptr_l[i];
-      const IType high = indptr_l[i+1];
+    for (int k = 0; k < num_rows_l; ++k) {
+      const IType low = indptr_l[k];
+      const IType high = indptr_l[k+1];
       if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
       int j = -1, l = low, r = high - 1;
       while (l <= r) {
@@ -720,7 +704,7 @@ struct DotCsrDnsRsp<true, false> {
         else r = m - 1;
       }
       if (j >= 0) {
-        out[i] += data_l[j] * data_r[i*num_cols+icol];
+        out[i] += data_l[j] * data_r[k*num_cols+icol];
       }
     }
   }
@@ -768,11 +752,15 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
             // requested[0] is temp space resource
             mshadow::Tensor<xpu, 2, DType> out_tmp = ctx.requested[0].get_space_typed<xpu, 2, DType>(
                 mshadow::Shape2(ret->shape()[0], ret->shape()[1]), s);
+            if (kWriteTo == req) {
+              mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
+                  s, out_tmp.shape_.Size(), out_tmp.dptr_);
+            }
             // generate a temporary dns output
             mxnet_op::Kernel<DotCsrDnsDns<true, false>, xpu>::Launch(
                 s, out_tmp.shape_.Size(), out_tmp.dptr_, data_l.dptr<DType>(),
                 indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_r.dptr<DType>(),
-                out_tmp.shape_[0], out_tmp.shape_[1]);
+                data_l.shape_[0], out_tmp.shape_[1]);
 
             // cast dns to rsp
             CastStorageDnsRspImpl<xpu>(ctx, TBlob(out_tmp), ret);
@@ -809,21 +797,6 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
   });
 }
 
-/*!
- * \brief Forward function of dot(csr, dns) = rsp_out
- * Must be called by DotForwardEx
- */
-template<typename xpu>
-void DotForwardCsrDnsRsp(const nnvm::NodeAttrs& attrs,
-                         const OpContext& ctx,
-                         const std::vector<NDArray>& inputs,
-                         const std::vector<OpReqType>& req,
-                         const std::vector<NDArray>& outputs) {
-  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
-  NDArray ret = outputs[0];
-  DotCsrDnsRspImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
-}
-
 template<typename xpu>
 void DotForwardEx(const nnvm::NodeAttrs& attrs,
                   const OpContext& ctx,
@@ -836,14 +809,15 @@ void DotForwardEx(const nnvm::NodeAttrs& attrs,
   const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
   CHECK(!param.transpose_b) << "tranposing rhs of the op dot is not supported";
 
+  NDArray ret = outputs[0];  // get rid of the const qualifier
   if (inputs[0].storage_type() == kCSRStorage
       && inputs[1].storage_type() == kDefaultStorage
       && outputs[0].storage_type() == kDefaultStorage) {
-    DotForwardCsrDnsDns<xpu>(attrs, ctx, inputs, req, outputs);
+    DotCsrDnsDnsImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
   } else if (inputs[0].storage_type() == kCSRStorage
       && inputs[1].storage_type() == kDefaultStorage
       && outputs[0].storage_type() == kRowSparseStorage) {
-    DotForwardCsrDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+    DotCsrDnsRspImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
   } else {
     // TODO(junwu): add fallback mechanism
     LOG(FATAL) << "Not supported";
