@@ -1,8 +1,8 @@
 /*!
- * Copyright (c) 2015 by Contributors
- * \file activation.cc
- * \brief activation op
- * \author Bing Xu
+ * Copyright (c) 2017 by Contributors
+ * \file quantized_relu.cc
+ * \brief
+ * \author Ziheng Jiang
 */
 #include "./quantized_relu-inl.h"
 

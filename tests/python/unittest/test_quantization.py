@@ -30,6 +30,14 @@ def test_quantized_fully_connected():
     b = nd.array(b_, ctx=ctx, dtype=dtype)
     c = nd.quantized_fully_connected(x, w, b, num_hidden=n)
 
+def test_quantized_convolution():
+    x_ = np.random.uniform(low=-100, high=100, size=(1, 1, 5, 5))
+    k_ = np.random.uniform(low=-100, high=100, size=(1, 1, 3, 3))
+    x = nd.array(x_, ctx=ctx, dtype=dtype)
+    k = nd.array(k_, ctx=ctx, dtype=dtype)
+    y = nd.quantized_convolution(x, k, num_filter=1,
+            kernel=[3, 3], stride=[1, 1], pad=[1, 1])
+
 if __name__ == "__main__":
     test_quantized_relu()
     test_quantized_max_pool()

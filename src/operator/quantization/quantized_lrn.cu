@@ -33,7 +33,7 @@ class QuantizedLRNCuDNNOp : public Operator {
                        const std::vector<TBlob> &aux_args) {
     using namespace mshadow;
     CHECK_EQ(in_data.size(), 1U);
-    CHECK_EQ(out_data.size(), 2U);
+    CHECK_EQ(out_data.size(), 1U);
     float alpha = 1.0f;
     float beta  = 0.0f;
     Stream<gpu> *s = ctx.get_stream<gpu>();
@@ -69,8 +69,6 @@ class QuantizedLRNCuDNNOp : public Operator {
                    const std::vector<TBlob> &in_data,
                    const std::vector<TBlob> &out_data) {
     using namespace mshadow;
-    CHECK_EQ(in_data.size(), 1U);
-    CHECK_EQ(out_data.size(), 2U);
     CHECK(!init_cudnn_) << "Init should only be called when not initialized";
     init_cudnn_ = true;
     const TBlob& data = in_data[0];

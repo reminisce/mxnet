@@ -51,7 +51,6 @@ class QuantizedLRNProp : public OperatorProperty {
     if (dshape.ndim() == 0) return false;
     out_shape->clear();
     out_shape->push_back(dshape);
-    out_shape->push_back(dshape);
     return true;
   }
 
@@ -91,10 +90,7 @@ class QuantizedLRNProp : public OperatorProperty {
     const std::vector<int> &out_grad,
     const std::vector<int> &in_data,
     const std::vector<int> &out_data) const override {
-    return {
-      out_grad[0], in_data[0],
-      out_data[1], out_data[0]
-    };
+    return {out_grad[0], in_data[0], out_data[0]};
   }
 
   int NumVisibleOutputs() const override {
@@ -102,7 +98,7 @@ class QuantizedLRNProp : public OperatorProperty {
   }
 
   int NumOutputs() const override {
-    return 2;
+    return 1;
   }
 
   std::vector<std::string> ListArguments() const override {
@@ -110,7 +106,7 @@ class QuantizedLRNProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"output", "tmp_norm"};
+    return {"output"};
   }
 
   Operator* CreateOperator(Context ctx) const override {
