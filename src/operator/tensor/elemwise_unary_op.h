@@ -442,9 +442,7 @@ inline bool CastStorageInferStorageType(const nnvm::NodeAttrs& attrs,
   const CastStorageParam& param = nnvm::get<CastStorageParam>(attrs.parsed);
   CHECK_NE(param.storage_type, kUndefinedStorage)
     << "dst ndarray's storage type must be specified";
-  // TODO(junwu): remove the following line and use TYPE_ASSIGN_CHECK
-  out_attrs->at(0) = param.storage_type;
-  //TYPE_ASSIGN_CHECK(*out_attrs, 0, param.storage_type);
+  TYPE_ASSIGN_CHECK(*out_attrs, 0, param.storage_type);
   return true;
 }
 
