@@ -36,8 +36,11 @@ Operator *QuantizedConvolutionProp::CreateOperatorEx(Context ctx,
 
 MXNET_REGISTER_OP_PROPERTY(quantized_convolution, QuantizedConvolutionProp)
 .add_argument("data", "NDArray-or-Symbol", "Input data.")
-.add_argument("weight", "NDArray-or-Symbol", "Weight matrix.")
-.add_argument("bias", "NDArray-or-Symbol", "Bias parameter.")
+.add_argument("filter", "NDArray-or-Symbol", "Weight matrix.")
+.add_argument("min_data", "NDArray-or-Symbol", "Minimum value of data.")
+.add_argument("max_data", "NDArray-or-Symbol", "Maximum value of data.")
+.add_argument("min_filter", "NDArray-or-Symbol", "Minimum value of filter.")
+.add_argument("max_filter", "NDArray-or-Symbol", "Maximum value of filter.")
 .add_arguments(QuantizedConvolutionParam::__FIELDS__());
 
 }  // namespace op

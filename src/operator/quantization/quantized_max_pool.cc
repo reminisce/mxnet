@@ -66,6 +66,8 @@ height, width)*.
 
 )code" ADD_FILELINE)
 .add_argument("data", "NDArray-or-Symbol", "Input data to the pooling operator.")
+.add_argument("min_range", "NDArray-or-Symbol", "")
+.add_argument("max_range", "NDArray-or-Symbol", "")
 .add_arguments(QuantizedMaxPoolParam::__FIELDS__());
 
 }  // namespace op

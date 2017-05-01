@@ -7,10 +7,9 @@
 
 #ifndef MXNET_OPERATOR_CONTRIB_QUANTIZED_RELU_INL_H_
 #define MXNET_OPERATOR_CONTRIB_QUANTIZED_RELU_INL_H_
-#include <algorithm>
-#include <vector>
-#include <mxnet/operator.h>
+#include <mxnet/operator_util.h>
 #include "../operator_common.h"
+#include "./quantization_utils.h"
 
 namespace mxnet {
 namespace op {
@@ -28,36 +27,47 @@ class QuantizedReluProp : public OperatorProperty {
     return std::map<std::string, std::string>();
   }
 
+  std::vector<std::string> ListArguments() const override {
+    return {"data", "min_range", "max_range"};
+  }
+
+  std::vector<std::string> ListOutputs() const override {
+    return {"output", "min_range", "max_range"};
+  }
+
   bool InferShape(std::vector<TShape> *in_shape,
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
-    using namespace mshadow;
-    CHECK_EQ(in_shape->size(), 1U) << "Input:[data]";
-    const TShape &dshape = in_shape->at(0);
-    if (dshape.ndim() == 0) return false;
+    CHECK_EQ(in_shape->size(), 3U);
+
+    CHECK(!shape_is_none(in_shape->at(0)));
+    CHECK(shape_is_scalar(in_shape->at(1)));
+    CHECK(shape_is_scalar(in_shape->at(2)));
+
     out_shape->clear();
-    out_shape->push_back(dshape);
+    out_shape->push_back(in_shape->at(0));
+    out_shape->push_back(TShape{1});
+    out_shape->push_back(TShape{1});
     return true;
   }
 
   bool InferType(std::vector<int> *in_type,
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
-    CHECK_GE(in_type->size(), 1U);
-    int dtype = (*in_type)[0];
-    CHECK_NE(dtype, -1) << "First input must have specified type";
-    for (index_t i = 0; i < in_type->size(); ++i) {
-      if ((*in_type)[i] == -1) {
-          (*in_type)[i] = dtype;
-      } else {
-        CHECK_EQ((*in_type)[i], dtype)
-          << "This layer requires uniform type. "
-          << "Expected " << dtype << " v.s. given "
-          << (*in_type)[i] << " at " << ListArguments()[i];
-      }
-    }
+    CHECK_EQ(in_type->size(), 3U);
+    CHECK_EQ((*in_type)[0], mshadow::kInt8)
+      << "`dequantized_relu` only supports uint8 input for now";
+    CHECK_EQ((*in_type)[1], mshadow::kFloat32)
+      << "the second input of `dequantized_relu` should be a tensor "
+      << "with type of float32";
+    CHECK_EQ((*in_type)[2], mshadow::kFloat32)
+      << "the third input of `dequantized_relu` should be a tensor "
+      << "with type of float32";
+
     out_type->clear();
-    out_type->push_back(dtype);
+    out_type->push_back(mshadow::kInt8);
+    out_type->push_back(mshadow::kFloat32);
+    out_type->push_back(mshadow::kFloat32);
     return true;
   }
 
@@ -68,22 +78,6 @@ class QuantizedReluProp : public OperatorProperty {
 
   std::string TypeString() const override {
     return "quantized_relu";
-  }
-
-  // decalre dependency and inplace optimization options
-  std::vector<int> DeclareBackwardDependency(
-    const std::vector<int> &out_grad,
-    const std::vector<int> &in_data,
-    const std::vector<int> &out_data) const override {
-    return {out_grad[0], out_data[0], in_data[0]};
-  }
-
-  std::vector<std::pair<int, void*> > BackwardInplaceOption(
-    const std::vector<int> &out_grad,
-    const std::vector<int> &in_data,
-    const std::vector<int> &out_data,
-    const std::vector<void*> &in_grad) const override {
-    return {{out_grad[0], in_grad[0]}};
   }
 
   std::vector<std::pair<int, void*> > ForwardInplaceOption(

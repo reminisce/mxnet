@@ -15,18 +15,13 @@ namespace op {
 
 struct QuantizedConvolutionParam :
   public dmlc::Parameter<QuantizedConvolutionParam> {
-  TShape kernel;
   TShape stride;
   TShape pad;
-  uint32_t num_filter;
   DMLC_DECLARE_PARAMETER(QuantizedConvolutionParam) {
-    DMLC_DECLARE_FIELD(kernel).describe("convolution kernel size: (h, w)");
     DMLC_DECLARE_FIELD(stride).set_default(TShape())
     .describe("convolution stride: (h, w)");
     DMLC_DECLARE_FIELD(pad).set_default(TShape())
     .describe("pad for convolution: (h, w)");
-    DMLC_DECLARE_FIELD(num_filter).set_range(1, 100000)
-    .describe("convolution filter(channel) number");
   }
 };
 
@@ -44,7 +39,6 @@ class QuantizedConvolutionProp : public OperatorProperty {
   void Init(const std::vector<std::pair<std::string, std::string> >& kwargs) override {
     using namespace mshadow;
     param_.Init(kwargs);
-    CHECK(param_.kernel.ndim() == 2);
     if (param_.stride.ndim() == 0) param_.stride = Shape2(1, 1);
     if (param_.pad.ndim() == 0)    param_.pad = Shape2(0, 0);
   }
@@ -54,54 +48,62 @@ class QuantizedConvolutionProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListArguments() const {
-    return {"data", "filter"};
+    return {"data", "filter", "min_data", "max_data", "min_filter", "max_filter"};
+  }
+
+  std::vector<std::string> ListOutputs() const override {
+    return {"out", "min_out", "max_out"};
   }
 
   bool InferShape(std::vector<TShape> *in_shape,
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
     using namespace mshadow;
-    CHECK_EQ(in_shape->size(), 2U) << "Input:[data, weight]";
-    const TShape &dshape = in_shape->at(0);
-    if (dshape.ndim() == 0) return false;
+    CHECK_EQ(in_shape->size(), 6U);
+    CHECK_EQ(out_shape->size(), 3U);
+    for (int i = 0; i < 2; ++i) {
+      CHECK(!shape_is_none(in_shape->at(0)));
+    }
+    for (int i = 2; i < 6; ++i) {
+      CHECK(shape_is_scalar(in_shape->at(i)));
+    }
+    const TShape& dshape =  in_shape->at(0);
+    const TShape& fshape =  in_shape->at(1);
+    TShape& oshape = out_shape->at(0);
 
-    CHECK_EQ(dshape.ndim(), 4U) \
-      << "Input data should be 4D in batch-num_filter-y-x";
+    CHECK_EQ(dshape.ndim(), 4U); // batch_size, in_filter, h, w
+    CHECK_EQ(fshape.ndim(), 4U); // out_filter, in_filter, filter_h, filter_w
 
-    Shape<4> wshape = Shape4(param_.num_filter,
-                             dshape[1],
-                             param_.kernel[0], param_.kernel[1]);
-    SHAPE_ASSIGN_CHECK(*in_shape, 1, wshape);
-
-    Shape<4> oshape;
     oshape[0] = dshape[0];
-    oshape[1] = param_.num_filter;
+    oshape[1] = fshape[0];
     oshape[2] = (AddPad(dshape[2], param_.pad[0])) / param_.stride[0] + 1;
     oshape[3] = (AddPad(dshape[3], param_.pad[1])) / param_.stride[1] + 1;
 
     out_shape->clear();
     out_shape->push_back(oshape);
+    out_shape->push_back(TShape{1});
+    out_shape->push_back(TShape{1});
     return true;
   }
 
   bool InferType(std::vector<int> *in_type,
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
-    CHECK_GE(in_type->size(), 1U);
-    int dtype = (*in_type)[0];
-    CHECK_NE(dtype, -1) << "First input must have specified type";
-    for (index_t i = 0; i < in_type->size(); ++i) {
-      if ((*in_type)[i] == -1) {
-          (*in_type)[i] = dtype;
-      } else {
-        CHECK_EQ((*in_type)[i], dtype)
-          << "This layer requires uniform type. "
-          << "Expected " << dtype << " v.s. given "
-          << (*in_type)[i] << " at " << ListArguments()[i];
-      }
+    CHECK_EQ(in_type->size(), 6U);
+    for (size_t i = 0; i < 2; ++i) {
+      CHECK_EQ((*in_type)[i], mshadow::kInt8)
+        << "`quantized_matmul` only supports int8 input for now";
     }
+    for (size_t i = 2; i < 6; ++i) {
+      CHECK_EQ((*in_type)[1], mshadow::kFloat32)
+        << "the " << i << "th input of `quantized_matmul` should"
+        << "be a tensor with type of float32";
+    }
+
     out_type->clear();
-    out_type->push_back(dtype);
+    out_type->push_back(mshadow::kInt8);
+    out_type->push_back(mshadow::kFloat32);
+    out_type->push_back(mshadow::kFloat32);
     return true;
   }
 

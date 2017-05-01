@@ -5,22 +5,22 @@
  * \author Ziheng Jiang
 */
 #include "./quantized_convolution-inl.h"
+#include "./quantization_utils.h"
 
 namespace mxnet {
 namespace op {
 
 
-template<typename DType>
+template<typename DType, typename CmpType>
 class QuantizedConvolutionCuDNNOp : public Operator {
  public:
   explicit QuantizedConvolutionCuDNNOp(const Context& ctx,
                                        const std::vector<TShape>& in_shape,
                                        const std::vector<TShape>& out_shape,
-                                       const QuantizedConvolutionParam& param,
-                                       int cmp_type) {
-    dtype_ = mshadow::DataType<DType>::kCudnnFlag;
+                                       const QuantizedConvolutionParam& param) {
     param_ = param;
-    cmp_type_ = convertToCuDNNDataType(cmp_type);
+    dtype_ = mshadow::DataType<DType>::kCudnnFlag;
+    cmp_type_ = mshadow::DataType<CmpType>::kCudnnFlag;
     format_ = CUDNN_TENSOR_NCHW;
     init_temp_size_ = false;
     // 1024 MB
@@ -70,6 +70,11 @@ class QuantizedConvolutionCuDNNOp : public Operator {
                                        &beta,
                                        out_desc_,
                                        out.dptr_));
+
+    mxnet_op::Kernel<quantization_range_for_multiplication, gpu>::Launch(s, 1,
+      out_data[1].dptr<float>(), out_data[2].dptr<float>(),
+       in_data[3].dptr<float>(),  in_data[4].dptr<float>(),
+       in_data[5].dptr<float>(),  in_data[6].dptr<float>());
   }
 
   virtual void Backward(const OpContext &ctx,
@@ -197,13 +202,8 @@ Operator* CreateOp<gpu>(int dtype,
                         const std::vector<TShape>& out_shape,
                         const QuantizedConvolutionParam& param) {
   Operator *op = NULL;
-  LOG(INFO) << "dtype: " << dtype << ", "<< (dtype == mshadow::kInt8);
-  int cmp_type = (dtype == mshadow::kInt8) ? mshadow::kInt32 : dtype;
-  LOG(INFO) << "cmp_type: " << cmp_type << ", "<< (cmp_type == mshadow::kInt32);
-  MSHADOW_TYPE_SWITCH(dtype, DType, {
-    op = new QuantizedConvolutionCuDNNOp<DType>(ctx,
-      in_shape, out_shape, param, cmp_type);
-  })
+  op = new QuantizedConvolutionCuDNNOp<int8_t, int32_t>(ctx,
+    in_shape, out_shape, param);
   return op;
 }
 
