@@ -60,7 +60,6 @@ class QuantizedConvolutionProp : public OperatorProperty {
                   std::vector<TShape> *aux_shape) const override {
     using namespace mshadow;
     CHECK_EQ(in_shape->size(), 6U);
-    CHECK_EQ(out_shape->size(), 3U);
     for (int i = 0; i < 2; ++i) {
       CHECK(!shape_is_none(in_shape->at(0)));
     }
@@ -69,15 +68,21 @@ class QuantizedConvolutionProp : public OperatorProperty {
     }
     const TShape& dshape =  in_shape->at(0);
     const TShape& fshape =  in_shape->at(1);
-    TShape& oshape = out_shape->at(0);
-
     CHECK_EQ(dshape.ndim(), 4U); // batch_size, in_filter, h, w
     CHECK_EQ(fshape.ndim(), 4U); // out_filter, in_filter, filter_h, filter_w
+    CHECK_EQ(dshape[3], fshape[3]);
 
+    // origin filter: (filter_height, filter_width, in_channels, out_channels)
+    // input:  [NHWC](batch, in_height, in_width, in_channels)
+    // filter: [NHWC](out_channels, filter_height, filter_width, in_channels)
+    // output: [NHWC](batch, out_height, out_width, out_channels)
+    TShape oshape{1, 1, 1, 1};
     oshape[0] = dshape[0];
-    oshape[1] = fshape[0];
-    oshape[2] = (AddPad(dshape[2], param_.pad[0])) / param_.stride[0] + 1;
-    oshape[3] = (AddPad(dshape[3], param_.pad[1])) / param_.stride[1] + 1;
+    oshape[1] = (AddPad(dshape[1], param_.pad[0]) - fshape[1])
+        / param_.stride[0] + 1;
+    oshape[2] = (AddPad(dshape[2], param_.pad[1]) - fshape[2])
+        / param_.stride[1] + 1;
+    oshape[3] = fshape[0];
 
     out_shape->clear();
     out_shape->push_back(oshape);
@@ -95,7 +100,7 @@ class QuantizedConvolutionProp : public OperatorProperty {
         << "`quantized_matmul` only supports int8 input for now";
     }
     for (size_t i = 2; i < 6; ++i) {
-      CHECK_EQ((*in_type)[1], mshadow::kFloat32)
+      CHECK_EQ((*in_type)[i], mshadow::kFloat32)
         << "the " << i << "th input of `quantized_matmul` should"
         << "be a tensor with type of float32";
     }
@@ -117,12 +122,9 @@ class QuantizedConvolutionProp : public OperatorProperty {
     return "quantized_convolution";
   }
 
-  // decalre dependency and inplace optimization options
-  std::vector<int> DeclareBackwardDependency(
-    const std::vector<int> &out_grad,
-    const std::vector<int> &in_data,
-    const std::vector<int> &out_data) const override {
-    return {out_grad[0], in_data[0], in_data[1]};
+  std::vector<ResourceRequest> ForwardResource(
+      const std::vector<TShape> &in_shape) const override {
+    return {ResourceRequest::kTempSpace};
   }
 
   Operator* CreateOperator(Context ctx) const override {

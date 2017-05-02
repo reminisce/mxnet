@@ -50,7 +50,6 @@ class QuantizedMatmulProp : public OperatorProperty {
                   std::vector<TShape> *aux_shape) const override {
     using namespace mshadow;
     CHECK_EQ(in_shape->size(), 6U);
-    CHECK_EQ(out_shape->size(), 3U);
 
     for (int i = 0; i < 2; ++i) {
       CHECK(!shape_is_none(in_shape->at(0)));
@@ -60,12 +59,12 @@ class QuantizedMatmulProp : public OperatorProperty {
     }
     TShape ashape = (*in_shape)[0];
     TShape bshape = (*in_shape)[1];
-    TShape oshape = (*out_shape)[0];
     CHECK_EQ(ashape[1], bshape[0]);
 
-    SHAPE_ASSIGN_CHECK(*out_shape, 0, Shape2(ashape[0], bshape[1]));
-    SHAPE_ASSIGN_CHECK(*out_shape, 1, TShape{1});
-    SHAPE_ASSIGN_CHECK(*out_shape, 2, TShape{1});
+    out_shape->clear();
+    out_shape->push_back(TShape{ashape[0], bshape[1]});
+    out_shape->push_back(TShape{1});
+    out_shape->push_back(TShape{1});
     return true;
   }
 
@@ -78,7 +77,7 @@ class QuantizedMatmulProp : public OperatorProperty {
         << "`quantized_matmul` only supports int8 input for now";
     }
     for (size_t i = 2; i < 6; ++i) {
-      CHECK_EQ((*in_type)[1], mshadow::kFloat32)
+      CHECK_EQ((*in_type)[i], mshadow::kFloat32)
         << "the " << i << "th input of `quantized_matmul` should"
         << "be a tensor with type of float32";
     }

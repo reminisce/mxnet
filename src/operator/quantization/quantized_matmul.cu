@@ -63,7 +63,8 @@ class QuantizedMatmulCublasOp : public Operator {
                              cmp_type_,
                              oshape[1],
                              cmp_type_,
-                             CUBLAS_GEMM_DFALT));
+                             CUBLAS_GEMM_ALGO1));
+                             // CUBLAS_GEMM_DFALT));
 
     mxnet_op::Kernel<quantization_range_for_multiplication, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
