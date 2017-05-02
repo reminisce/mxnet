@@ -156,7 +156,6 @@ class NDArray {
 #if MKL_EXPERIMENTAL == 1
       Mkl_mem_ = std::make_shared<MKLMemHolder>();
 #endif
-      CHECK(aux_data.size() == 1) << "Multiple aux_data not supported yet";
   }
 
   /*!
