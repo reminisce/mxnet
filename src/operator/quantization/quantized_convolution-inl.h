@@ -17,11 +17,16 @@ struct QuantizedConvolutionParam :
   public dmlc::Parameter<QuantizedConvolutionParam> {
   TShape stride;
   TShape pad;
+  int out_type;
   DMLC_DECLARE_PARAMETER(QuantizedConvolutionParam) {
-    DMLC_DECLARE_FIELD(stride).set_default(TShape())
+    DMLC_DECLARE_FIELD(stride)
     .describe("convolution stride: (h, w)");
-    DMLC_DECLARE_FIELD(pad).set_default(TShape())
+    DMLC_DECLARE_FIELD(pad)
     .describe("pad for convolution: (h, w)");
+    DMLC_DECLARE_FIELD(out_type)
+    .add_enum("float32", mshadow::kFloat32)
+    .add_enum("int8", mshadow::kInt8)
+    .set_default(mshadow::kFloat32);
   }
 };
 
@@ -106,7 +111,7 @@ class QuantizedConvolutionProp : public OperatorProperty {
     }
 
     out_type->clear();
-    out_type->push_back(mshadow::kInt8);
+    out_type->push_back(param_.out_type);
     out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     return true;

@@ -19,13 +19,11 @@ class QuantizedConvolutionCuDNNOp : public Operator {
                                        const QuantizedConvolutionParam& param) {
     param_ = param;
     src_type_ = mshadow::DataType<SrcType>::kCudnnFlag;
+    dst_type_ = mshadow::DataType<DstType>::kCudnnFlag;
     cmp_type_ = mshadow::DataType<CmpType>::kCudnnFlag;
     algo_ = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
     format_ = CUDNN_TENSOR_NHWC;
     init_temp_size_ = false;
-    // 1024 MB
-    workspace_limit_ = 1024;
-    workspace_limit_ = (workspace_limit_ << 20) / sizeof(SrcType);
     InitDescriptors(ctx, in_shape, out_shape);
   }
 
@@ -51,13 +49,11 @@ class QuantizedConvolutionCuDNNOp : public Operator {
     TBlob filter = in_data[1];
     TBlob out    = out_data[0];
     if (!init_temp_size_) GetTempSize(ctx);
-    LOG(INFO) << "Resource Request: " << workspace_;
     Tensor<gpu, 1, SrcType> workspace =
       ctx.requested[0].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
 
     float alpha = 1.0f;
     float beta = 0.0f;
-    LOG(INFO) << "CuDNN Forward";
     CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
                                        &alpha,
                                        data_desc_,
@@ -108,10 +104,6 @@ class QuantizedConvolutionCuDNNOp : public Operator {
                                                CUDNN_CROSS_CORRELATION,
                                                cmp_type_));
 
-    LOG(INFO) << "dshape: " << dshape
-      << ", kshape: " << kshape
-      << ", oshape: " << oshape;
-
     CUDNN_CALL(cudnnSetTensor4dDescriptor(data_desc_,
                                           format_,
                                           src_type_,
@@ -121,7 +113,7 @@ class QuantizedConvolutionCuDNNOp : public Operator {
                                           dshape[2]));
     CUDNN_CALL(cudnnSetTensor4dDescriptor(out_desc_,
                                           format_,
-                                          src_type_,
+                                          dst_type_,
                                           oshape[0],
                                           oshape[3],
                                           oshape[1],
@@ -151,17 +143,16 @@ class QuantizedConvolutionCuDNNOp : public Operator {
                                                        &workspace_byte_));
     workspace_ = workspace_byte_ / sizeof(SrcType) + 1;
     init_temp_size_ = true;
-    LOG(INFO) << "GetWorkspaceSize Done";
   }
 
 
  private:
   bool init_temp_size_ = false;
-  size_t workspace_limit_;
   QuantizedConvolutionParam param_;
   size_t workspace_;
   size_t workspace_byte_;
   cudnnDataType_t src_type_;
+  cudnnDataType_t dst_type_;
   cudnnDataType_t cmp_type_;
   cudnnTensorFormat_t format_;
   cudnnConvolutionDescriptor_t conv_desc_;
@@ -189,8 +180,10 @@ Operator* CreateOp<gpu>(int dtype,
                         const std::vector<TShape>& out_shape,
                         const QuantizedConvolutionParam& param) {
   Operator *op = NULL;
-  op = new QuantizedConvolutionCuDNNOp<int8_t, int8_t, int32_t>(ctx,
-    in_shape, out_shape, param);
+  MSHADOW_TYPE_SWITCH(param.out_type, DstType, {
+    op = new QuantizedConvolutionCuDNNOp<int8_t, DstType, int32_t>(ctx,
+      in_shape, out_shape, param);
+  })
   return op;
 }
 

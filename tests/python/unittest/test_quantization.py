@@ -23,6 +23,7 @@ def test_quantized_convolution():
     max0k = nd.array([1.0], ctx=ctx, dtype=np.float32)
     y, min1, max1 = nd.quantized_convolution(x, k, min0x, max0x, min0k, max0k,
             stride=[1, 1], pad=[1, 1])
+    y_ = y.asnumpy().astype(np.int32)
 
 def test_quantized_relu():
     a_ = np.random.uniform(low=-100, high=100, size=(n,n))
