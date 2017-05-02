@@ -11,14 +11,15 @@
 namespace mxnet {
 namespace op {
 
-template<typename DType, typename CmpType>
+template<typename SrcType, typename DstType, typename CmpType>
 class QuantizedMatmulCublasOp : public Operator {
  public:
   explicit QuantizedMatmulCublasOp(const Context& ctx,
                                    const std::vector<TShape>& in_shape,
                                    const std::vector<TShape>& out_shape,
                                    const QuantizedMatmulParam& param) {
-    dtype_    = mshadow::DataType<DType>::kCudaFlag;
+    src_type_ = mshadow::DataType<SrcType>::kCudaFlag;
+    dst_type_ = mshadow::DataType<DstType>::kCudaFlag;
     cmp_type_ = mshadow::DataType<CmpType>::kCudaFlag;
     alpha_ = 1.0f;
     beta_  = 0.0f;
@@ -53,23 +54,22 @@ class QuantizedMatmulCublasOp : public Operator {
                              k,
                              &alpha_,
                              data.dptr_,
-                             dtype_,
+                             src_type_,
                              dshape[1],
                              weight.dptr_,
-                             dtype_,
+                             src_type_,
                              wshape[1],
                              &beta_,
                              out.dptr_,
-                             cmp_type_,
+                             dst_type_,
                              oshape[1],
                              cmp_type_,
-                             CUBLAS_GEMM_ALGO1));
-                             // CUBLAS_GEMM_DFALT));
+                             CUBLAS_GEMM_DFALT));
 
     mxnet_op::Kernel<quantization_range_for_multiplication, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
-       in_data[3].dptr<float>(),  in_data[4].dptr<float>(),
-       in_data[5].dptr<float>(),  in_data[6].dptr<float>());
+       in_data[2].dptr<float>(),  in_data[3].dptr<float>(),
+       in_data[4].dptr<float>(),  in_data[5].dptr<float>());
   }
 
   virtual void Backward(const OpContext &ctx,
@@ -84,7 +84,8 @@ class QuantizedMatmulCublasOp : public Operator {
  private:
   float alpha_;
   float beta_;
-  cudaDataType dtype_;
+  cudaDataType src_type_;
+  cudaDataType dst_type_;
   cudaDataType cmp_type_;
 
   cudaDataType_t convertToCudaDataType(int dtype) {
@@ -104,7 +105,7 @@ Operator* CreateOp<gpu>(int dtype,
                         const std::vector<TShape>& out_shape,
                         const QuantizedMatmulParam& param) {
   Operator *op = NULL;
-  op = new QuantizedMatmulCublasOp<int8_t, int32_t>(ctx,
+  op = new QuantizedMatmulCublasOp<int8_t, float, float>(ctx,
     in_shape, out_shape, param);
   return op;
 }

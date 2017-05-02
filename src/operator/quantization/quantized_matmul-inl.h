@@ -83,7 +83,7 @@ class QuantizedMatmulProp : public OperatorProperty {
     }
 
     out_type->clear();
-    out_type->push_back(mshadow::kInt8);
+    out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     return true;

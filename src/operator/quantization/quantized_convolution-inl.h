@@ -73,11 +73,10 @@ class QuantizedConvolutionProp : public OperatorProperty {
     }
     const TShape& dshape =  in_shape->at(0);
     const TShape& fshape =  in_shape->at(1);
-    CHECK_EQ(dshape.ndim(), 4U); // batch_size, in_filter, h, w
-    CHECK_EQ(fshape.ndim(), 4U); // out_filter, in_filter, filter_h, filter_w
+    CHECK_EQ(dshape.ndim(), 4U);
+    CHECK_EQ(fshape.ndim(), 4U);
     CHECK_EQ(dshape[3], fshape[3]);
 
-    // origin filter: (filter_height, filter_width, in_channels, out_channels)
     // input:  [NHWC](batch, in_height, in_width, in_channels)
     // filter: [NHWC](out_channels, filter_height, filter_width, in_channels)
     // output: [NHWC](batch, out_height, out_width, out_channels)
