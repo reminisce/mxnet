@@ -152,9 +152,29 @@ def test_cast_storage():
     test_dns_to_csr([[0, 1, 0], [0, 2, 0], [3, 0, 0], [0, 0, 4], [5, 6, 0], [0, 0, 7]])
 
 
+def test_sparse_dot():
+    def test_dot_csr_dns_rsp(dns1, dns2, trans_csr):
+        dns1 = mx.nd.array(dns1)
+        dns2 = mx.nd.array(dns2)
+        csr = mx.nd.cast_storage(dns1, storage_type='csr')
+        rsp_out = mx.nd.dot(csr, dns2, transpose_a=trans_csr)
+        rsp_expected = mx.nd.dot(csr.to_dense(), dns2, transpose_a=trans_csr)
+        # TODO(junwu): may need to compare rsp_out and rsp_expected in rsp format
+        # instead of converting them to the dense format
+        assert same(rsp_out.asnumpy(), rsp_expected.asnumpy())
+
+    test_dot_csr_dns_rsp(dns1=[[0, 0, 1, 4], [2, 0, 0, 0], [0, 0, 0, 0], [2, 9, 0, 5], [0, 0, 0, 1]],
+                         dns2=[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]],
+                         trans_csr=False)
+    test_dot_csr_dns_rsp(dns1=[[0, 0, 1, 4], [2, 0, 0, 0], [0, 0, 0, 0], [2, 9, 0, 5], [0, 0, 0, 1]],
+                         dns2=[[1, 2, 3, 4, 5], [5, 6, 7, 8, 6], [9, 10, 11, 12, 6], [13, 14, 15, 16, 7],
+                               [1, 1, 1, 1, 2]], trans_csr=True)
+
+
 if __name__ == '__main__':
-    test_cast_storage()
     test_elemwise_add_dense()
     test_elemwise_add_dense_sparse()
     test_elemwise_add_sparse_sparse()
     test_elemwise_add_multiple_stages()
+    test_cast_storage()
+    test_sparse_dot()

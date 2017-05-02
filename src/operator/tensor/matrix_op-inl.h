@@ -760,7 +760,7 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
             mxnet_op::Kernel<DotCsrDnsDns<true, false>, xpu>::Launch(
                 s, out_tmp.shape_.Size(), out_tmp.dptr_, data_l.dptr<DType>(),
                 indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_r.dptr<DType>(),
-                data_l.shape_[0], out_tmp.shape_[1]);
+                lhs.shape()[0], out_tmp.shape_[1]);
 
             // cast dns to rsp
             CastStorageDnsRspImpl<xpu>(ctx, TBlob(out_tmp), ret);
