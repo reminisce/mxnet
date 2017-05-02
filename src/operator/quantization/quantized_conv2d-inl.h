@@ -1,28 +1,28 @@
 /*!
  * Copyright (c) 2017 by Contributors
- * \file quantized_convolution-inl.h
+ * \file quantized_conv2d-inl.h
  * \brief
  * \author Ziheng Jiang
 */
 
-#ifndef MXNET_OPERATOR_CONTRIB_QUANTIZED_CONVOLUTION_INL_H_
-#define MXNET_OPERATOR_CONTRIB_QUANTIZED_CONVOLUTION_INL_H_
+#ifndef MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_INL_H_
+#define MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_INL_H_
 #include <mxnet/operator.h>
 #include "../operator_common.h"
 
 namespace mxnet {
 namespace op {
 
-struct QuantizedConvolutionParam :
-  public dmlc::Parameter<QuantizedConvolutionParam> {
+struct QuantizedConv2DParam :
+  public dmlc::Parameter<QuantizedConv2DParam> {
   TShape stride;
   TShape pad;
   int out_type;
-  DMLC_DECLARE_PARAMETER(QuantizedConvolutionParam) {
+  DMLC_DECLARE_PARAMETER(QuantizedConv2DParam) {
     DMLC_DECLARE_FIELD(stride)
-    .describe("convolution stride: (h, w)");
+    .describe("conv2d stride: (h, w)");
     DMLC_DECLARE_FIELD(pad)
-    .describe("pad for convolution: (h, w)");
+    .describe("pad for conv2d: (h, w)");
     DMLC_DECLARE_FIELD(out_type)
     .add_enum("float32", mshadow::kFloat32)
     .add_enum("int8", mshadow::kInt8)
@@ -37,9 +37,9 @@ Operator* CreateOp(int dtype,
                    const Context& ctx,
                    const std::vector<TShape>& in_shape,
                    const std::vector<TShape>& out_shape,
-                   const QuantizedConvolutionParam& param);
+                   const QuantizedConv2DParam& param);
 
-class QuantizedConvolutionProp : public OperatorProperty {
+class QuantizedConv2DProp : public OperatorProperty {
  public:
   void Init(const std::vector<std::pair<std::string, std::string> >& kwargs) override {
     using namespace mshadow;
@@ -75,6 +75,10 @@ class QuantizedConvolutionProp : public OperatorProperty {
     const TShape& fshape =  in_shape->at(1);
     CHECK_EQ(dshape.ndim(), 4U);
     CHECK_EQ(fshape.ndim(), 4U);
+    CHECK(dshape[3] % 4 == 0)
+      << "for 8bit cudnn conv, the number of channel must be multiple of 4";
+    CHECK(fshape[0] % 4 == 0)
+      << "for 8bit cudnn conv, the number of channel must be multiple of 4";
     CHECK_EQ(dshape[3], fshape[3]);
 
     // input:  [NHWC](batch, in_height, in_width, in_channels)
@@ -117,13 +121,13 @@ class QuantizedConvolutionProp : public OperatorProperty {
   }
 
   OperatorProperty* Copy() const override {
-    auto ptr = new QuantizedConvolutionProp();
+    auto ptr = new QuantizedConv2DProp();
     ptr->param_ = param_;
     return ptr;
   }
 
   std::string TypeString() const override {
-    return "quantized_convolution";
+    return "quantized_conv2d";
   }
 
   std::vector<ResourceRequest> ForwardResource(
@@ -140,7 +144,7 @@ class QuantizedConvolutionProp : public OperatorProperty {
                              std::vector<int> *in_type) const override;
 
  private:
-  QuantizedConvolutionParam param_;
+  QuantizedConv2DParam param_;
   index_t AddPad(index_t dsize, index_t pad) const {
     return dsize + 2 * pad;
   }
@@ -149,4 +153,4 @@ class QuantizedConvolutionProp : public OperatorProperty {
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_CONTRIB_QUANTIZED_CONVOLUTION_H_
+#endif  // MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_H_

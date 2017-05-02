@@ -1,22 +1,22 @@
 /*!
  * Copyright (c) 2017 by Contributors
- * \file quantized_convolution.cu
+ * \file quantized_conv2d.cu
  * \brief
  * \author Ziheng Jiang
 */
-#include "./quantized_convolution-inl.h"
+#include "./quantized_conv2d-inl.h"
 #include "./quantization_utils.h"
 
 namespace mxnet {
 namespace op {
 
 template<typename SrcType, typename DstType, typename CmpType>
-class QuantizedConvolutionCuDNNOp : public Operator {
+class QuantizedConv2DCuDNNOp : public Operator {
  public:
-  explicit QuantizedConvolutionCuDNNOp(const Context& ctx,
-                                       const std::vector<TShape>& in_shape,
-                                       const std::vector<TShape>& out_shape,
-                                       const QuantizedConvolutionParam& param) {
+  explicit QuantizedConv2DCuDNNOp(const Context& ctx,
+                                  const std::vector<TShape>& in_shape,
+                                  const std::vector<TShape>& out_shape,
+                                  const QuantizedConv2DParam& param) {
     param_ = param;
     src_type_ = mshadow::DataType<SrcType>::kCudnnFlag;
     dst_type_ = mshadow::DataType<DstType>::kCudnnFlag;
@@ -27,7 +27,7 @@ class QuantizedConvolutionCuDNNOp : public Operator {
     InitDescriptors(ctx, in_shape, out_shape);
   }
 
-  ~QuantizedConvolutionCuDNNOp() {
+  ~QuantizedConv2DCuDNNOp() {
     CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
     CUDNN_CALL(cudnnDestroyTensorDescriptor(data_desc_));
     CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
@@ -148,7 +148,7 @@ class QuantizedConvolutionCuDNNOp : public Operator {
 
  private:
   bool init_temp_size_ = false;
-  QuantizedConvolutionParam param_;
+  QuantizedConv2DParam param_;
   size_t workspace_;
   size_t workspace_byte_;
   cudnnDataType_t src_type_;
@@ -178,10 +178,10 @@ Operator* CreateOp<gpu>(int dtype,
                         const Context& ctx,
                         const std::vector<TShape>& in_shape,
                         const std::vector<TShape>& out_shape,
-                        const QuantizedConvolutionParam& param) {
+                        const QuantizedConv2DParam& param) {
   Operator *op = NULL;
   MSHADOW_TYPE_SWITCH(param.out_type, DstType, {
-    op = new QuantizedConvolutionCuDNNOp<int8_t, DstType, int32_t>(ctx,
+    op = new QuantizedConv2DCuDNNOp<int8_t, DstType, int32_t>(ctx,
       in_shape, out_shape, param);
   })
   return op;

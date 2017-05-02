@@ -45,24 +45,25 @@ class QuantizedMatmulCublasOp : public Operator {
     TShape wshape = weight.shape_;
     TShape oshape = out.shape_;
 
+    // row_C = col_C(T) = cublas(col_B(T) * col_A(T)) = cublas(row_B, row_A)
     int m = dshape[0], n = dshape[1], k = wshape[1];
     CUBLAS_CALL(cublasGemmEx(s->blas_handle_,
                              CUBLAS_OP_N,
                              CUBLAS_OP_N,
+                             k,
                              m,
                              n,
-                             k,
                              &alpha_,
-                             data.dptr_,
-                             src_type_,
-                             dshape[1],
                              weight.dptr_,
                              src_type_,
-                             wshape[1],
+                             k,
+                             data.dptr_,
+                             src_type_,
+                             n,
                              &beta_,
                              out.dptr_,
                              dst_type_,
-                             oshape[1],
+                             k,
                              cmp_type_,
                              CUBLAS_GEMM_DFALT));
 
