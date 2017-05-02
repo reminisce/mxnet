@@ -6,16 +6,6 @@ ctx = mx.gpu(0)
 dtype = np.int8
 n = 4
 
-def test_quantized_relu():
-    a_ = np.random.uniform(low=-100, high=100, size=(n,n))
-    a = nd.array(a_, ctx=ctx, dtype=dtype)
-    b = nd.quantized_relu(a)
-
-def test_quantized_max_pool():
-    a_ = np.random.uniform(low=-128, high=127, size=(1, 1, n, n))
-    a = nd.array(a_, ctx=ctx, dtype=dtype)
-    b = nd.quantized_max_pool(a, kernel=[2, 2])
-
 def test_quantized_lrn():
     n = 5
     x_ = np.random.uniform(low=-100, high=100, size=(1,1,n,n))
@@ -38,7 +28,22 @@ def test_quantized_convolution():
     y = nd.quantized_convolution(x, k, num_filter=1,
             kernel=[3, 3], stride=[1, 1], pad=[1, 1])
 
+def test_quantized_relu():
+    a_ = np.random.uniform(low=-100, high=100, size=(n,n))
+    a = nd.array(a_, ctx=ctx, dtype=dtype)
+    min0 = nd.array([-1.0], ctx=ctx, dtype=np.float32)
+    max0 = nd.array([1.0], ctx=ctx, dtype=np.float32)
+    b, min1, max1 = nd.quantized_relu(a, min0, max0)
+
+def test_quantized_max_pool():
+    a_ = np.random.uniform(low=-128, high=127, size=(1, 1, n, n))
+    a = nd.array(a_, ctx=ctx, dtype=dtype)
+    min0 = nd.array([-1.0], ctx=ctx, dtype=np.float32)
+    max0 = nd.array([1.0], ctx=ctx, dtype=np.float32)
+    b, min1, max1 = nd.quantized_max_pool(a, min0, max0, kernel=[2, 2])
+
+
 if __name__ == "__main__":
     test_quantized_relu()
     test_quantized_max_pool()
-    test_quantized_lrn()
+    # test_quantized_lrn()
