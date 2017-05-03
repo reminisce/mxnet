@@ -345,9 +345,12 @@ def zeros(shape, storage_type, ctx=None, dtype=mx_real_t, aux_types=None):
     """
     if ctx is None:
         ctx = Context.default_ctx
-    assert (storage_type == 'row_sparse')
+    assert (storage_type == 'row_sparse' or storage_type == 'csr')
     if aux_types is None:
-        aux_types = _STORAGE_AUX_TYPES['row_sparse']
+        if 'row_sparse' == storage_type:
+            aux_types = _STORAGE_AUX_TYPES['row_sparse']
+        elif 'csr' == storage_type:
+            aux_types = _STORAGE_AUX_TYPES['csr']
     # pylint: disable= no-member, protected-access
     out = SparseNDArray(_new_alloc_handle(storage_type, shape, ctx,
                                           aux_types=aux_types))

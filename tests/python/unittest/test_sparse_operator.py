@@ -151,7 +151,12 @@ def test_cast_storage():
     test_csr_to_dns([5, 8, 3, 6], [0, 0, 2, 3, 4], [0, 1, 2, 1], (4, 4))
     test_dns_to_csr([[0, 1, 0], [0, 2, 0], [3, 0, 0], [0, 0, 4], [5, 6, 0], [0, 0, 7]])
 
-
+# TODO(junwu): The backward of the operator dot cannot be tested for now
+# since the backend function CopyFromTo does not support taking two arguments
+# of the different storage types. Will add backward test after removing this
+# restriction on CopyFromTo(@haibin). Nevertheless, both backward and forward use
+# the same impl function of dot(csr, dns) = rsp and it has been tested
+# in the forward test cases as the following.
 def test_sparse_dot():
     def test_dot_csr_dns_rsp(dns1, dns2, trans_csr):
         dns1 = mx.nd.array(dns1)
@@ -162,6 +167,16 @@ def test_sparse_dot():
         # TODO(junwu): may need to compare rsp_out and rsp_expected in rsp format
         # instead of converting them to the dense format
         assert same(rsp_out.asnumpy(), rsp_expected.asnumpy())
+
+        # test symbolic forward
+        lhs = mx.symbol.Variable('lhs', storage_type='csr')
+        rhs = mx.symbol.Variable('rhs', storage_type='default')
+        sym_dot = mx.symbol.dot(lhs, rhs, transpose_a=trans_csr)
+        dns2_grad = mx.sparse_nd.zeros(dns2.shape, 'row_sparse')
+        exec_dot = sym_dot.bind(default_context(), args={'lhs': csr, 'rhs': dns2}, args_grad={'rhs': dns2_grad},
+                                grad_req={'lhs': 'null', 'rhs': 'write'})
+        exec_dot.forward(is_train=True)
+        assert same(exec_dot.outputs[0].asnumpy(), rsp_expected.asnumpy())
 
     test_dot_csr_dns_rsp(dns1=[[0, 0, 1, 4], [2, 0, 0, 0], [0, 0, 0, 0], [2, 9, 0, 5], [0, 0, 0, 1]],
                          dns2=[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]],
