@@ -576,9 +576,14 @@ struct DotCsrDnsDns<true, false> {
       int j = -1, l = low, r = high - 1;
       while (l <= r) {
         int m = l + (r - l) / 2;
-        if (col_idx_l[m] == irow) { j = m; break; }
-        if (col_idx_l[m] < irow) l = m + 1;
-        else r = m - 1;
+        if (col_idx_l[m] == irow) {
+          j = m; break;
+        }
+        if (col_idx_l[m] < irow) {
+          l = m + 1;
+        } else {
+          r = m - 1;
+        }
       }
       if (j >= 0) {
         out[i] += data_l[j] * data_r[k*num_cols+icol];
@@ -699,9 +704,14 @@ struct DotCsrDnsRsp<true, false> {
       int j = -1, l = low, r = high - 1;
       while (l <= r) {
         int m = l + (r - l) / 2;
-        if (col_idx_l[m] == irow) { j = m; break; }
-        if (col_idx_l[m] < irow) l = m + 1;
-        else r = m - 1;
+        if (col_idx_l[m] == irow) {
+          j = m; break;
+        }
+        if (col_idx_l[m] < irow) {
+          l = m + 1;
+        } else {
+          r = m - 1;
+        }
       }
       if (j >= 0) {
         out[i] += data_l[j] * data_r[k*num_cols+icol];
@@ -750,8 +760,9 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
 
             // get temporary space as an intermediate result of dot(csr.T(), dns).
             // requested[0] is temp space resource
-            mshadow::Tensor<xpu, 2, DType> out_tmp = ctx.requested[0].get_space_typed<xpu, 2, DType>(
-                mshadow::Shape2(ret->shape()[0], ret->shape()[1]), s);
+            mshadow::Tensor<xpu, 2, DType> out_tmp =
+              ctx.requested[0].get_space_typed<xpu, 2, DType>(
+                  mshadow::Shape2(ret->shape()[0], ret->shape()[1]), s);
             if (kWriteTo == req) {
               mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
                   s, out_tmp.shape_.Size(), out_tmp.dptr_);
@@ -769,7 +780,7 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
             // allocate output NDArray (single thread)
             index_t nnr = 0;  // number of non-zero rows in csr
             const IType* indptr = indptr_l.dptr<IType>();
-            for (int i = 0; i < (int)indptr_l.Size()-1; ++i) {
+            for (int i = 0; i < static_cast<int>(indptr_l.Size())-1; ++i) {
               if (indptr[i] < indptr[i+1]) ++nnr;
             }
             ret->CheckAndAlloc({TShape({nnr})});
@@ -777,7 +788,7 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
             const TBlob data_out = ret->data();
             const TBlob row_idx_out = ret->aux_data(rowsparse::kIdx);
             RType* row_idx = row_idx_out.dptr<RType>();
-            for (int i = 0, k = 0; i < (int)indptr_l.Size()-1; ++i) {
+            for (int i = 0, k = 0; i < static_cast<int>(indptr_l.Size())-1; ++i) {
               if (indptr[i] < indptr[i+1]) {
                 row_idx[k++] = i;
               }
@@ -789,7 +800,7 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
             mxnet_op::Kernel<DotCsrDnsRsp<false, false>, xpu>::Launch(
                 s, data_out.Size(), data_out.dptr<DType>(), row_idx_out.dptr<RType>(),
                 data_l.dptr<DType>(), indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(),
-                data_r.dptr<DType>(), data_out.shape_[1]); 
+                data_r.dptr<DType>(), data_out.shape_[1]);
           }
         });
       });

@@ -7,7 +7,6 @@
 #define MXNET_NDARRAY_NDARRAY_FUNCTION_INL_H_
 
 #include <vector>
-#include <mxnet/ndarray.h>
 #include "./ndarray_function.h"
 // this file will be included twice by CPU and GPU
 // macro to help specialize evaluation function
