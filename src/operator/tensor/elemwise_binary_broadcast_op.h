@@ -14,7 +14,6 @@
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"
 #include "./elemwise_binary_op.h"
-#include "./elemwise_binary_broadcast_op_sparse.h"
 #include "../operator_common.h"
 #include "broadcast_reduce-inl.h"
 
@@ -137,16 +136,6 @@ void BinaryBroadcastCompute(const nnvm::NodeAttrs& attrs,
       });
     });
   }
-}
-
-template<typename xpu, typename OP>
-void BinaryBroadcastComputeEx(const nnvm::NodeAttrs& attrs,
-                              const OpContext& ctx,
-                              const std::vector<NDArray>& inputs,
-                              const std::vector<OpReqType>& req,
-                              const std::vector<NDArray>& outputs) {
-  // TODO(junwu): add fallback mechanism, check output storage type
-  BinaryBroadcastComputeCsrDense<xpu, OP>(attrs, ctx, inputs, req, outputs);
 }
 
 template<typename Reducer, typename xpu, typename SrcExp, int ndim, typename DType>
