@@ -32,8 +32,8 @@ class QuantizedLRNCuDNNOp : public Operator {
                        const std::vector<TBlob> &out_data,
                        const std::vector<TBlob> &aux_args) {
     using namespace mshadow;
-    CHECK_EQ(in_data.size(), 1U);
-    CHECK_EQ(out_data.size(), 1U);
+    CHECK_EQ(in_data.size(), 3U);
+    CHECK_EQ(out_data.size(), 3U);
     float alpha = 1.0f;
     float beta  = 0.0f;
     Stream<gpu> *s = ctx.get_stream<gpu>();

@@ -46,33 +46,34 @@ class QuantizedLRNProp : public OperatorProperty {
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
     using namespace mshadow;
-    CHECK_EQ(in_shape->size(), 1U) << "Input:[data]";
+    CHECK_EQ(in_shape->size(), 3U) << "Input:[data]";
     const TShape &dshape = in_shape->at(0);
-    if (dshape.ndim() == 0) return false;
+    CHECK(!shape_is_none(dshape));
+    for (int i = 1; i < 3; ++i) {
+      SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
+    }
+
     out_shape->clear();
     out_shape->push_back(dshape);
+    out_shape->push_back(TShape{1});
+    out_shape->push_back(TShape{1});
     return true;
   }
 
   bool InferType(std::vector<int> *in_type,
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
-    CHECK_GE(in_type->size(), 1U);
-    int dtype = (*in_type)[0];
-    CHECK_NE(dtype, -1) << "First input must have specified type";
-    for (index_t i = 0; i < in_type->size(); ++i) {
-      if ((*in_type)[i] == -1) {
-        (*in_type)[i] = dtype;
-      } else {
-        CHECK_EQ((*in_type)[i], dtype)
-          << "This layer requires uniform type. "
-          << "Expected " << dtype << " v.s. given "
-          << (*in_type)[i] << " at " << ListArguments()[i];
-      }
+    CHECK_EQ(in_type->size(), 3U);
+    CHECK_EQ((*in_type)[0], mshadow::kInt8)
+      << "`dequantized_lrn` only supports int8 input for now";
+    for (int i = 1; i < 3; ++i) {
+      TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
     }
-    int n_out = this->ListOutputs().size();
+
     out_type->clear();
-    for (int i = 0; i < n_out; ++i ) out_type->push_back(dtype);
+    out_type->push_back(mshadow::kInt8);
+    out_type->push_back(mshadow::kFloat32);
+    out_type->push_back(mshadow::kFloat32);
     return true;
   }
 
@@ -86,27 +87,16 @@ class QuantizedLRNProp : public OperatorProperty {
     return "quantized_lrn";
   }
 
-  std::vector<int> DeclareBackwardDependency(
-    const std::vector<int> &out_grad,
-    const std::vector<int> &in_data,
-    const std::vector<int> &out_data) const override {
-    return {out_grad[0], in_data[0], out_data[0]};
-  }
-
-  int NumVisibleOutputs() const override {
-    return 1;
-  }
-
   int NumOutputs() const override {
-    return 1;
+    return 3;
   }
 
   std::vector<std::string> ListArguments() const override {
-    return {"data"};
+    return {"data", "min_data", "max_data"};
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"output"};
+    return {"output", "min_out", "max_out"};
   }
 
   Operator* CreateOperator(Context ctx) const override {

@@ -34,8 +34,8 @@ MXNET_REGISTER_OP_PROPERTY(quantized_relu, QuantizedReluProp)
 .describe(R"code(Applies an activation function element-wise to the input.
 )code" ADD_FILELINE)
 .add_argument("data", "NDArray-or-Symbol", "Input array to activation function.")
-.add_argument("min_range", "NDArray-or-Symbol", "")
-.add_argument("max_range", "NDArray-or-Symbol", "");
+.add_argument("min_data", "NDArray-or-Symbol", "")
+.add_argument("max_data", "NDArray-or-Symbol", "");
 
 }  // namespace op
 }  // namespace mxnet

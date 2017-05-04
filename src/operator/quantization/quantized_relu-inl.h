@@ -41,8 +41,9 @@ class QuantizedReluProp : public OperatorProperty {
     CHECK_EQ(in_shape->size(), 3U);
 
     CHECK(!shape_is_none(in_shape->at(0)));
-    CHECK(shape_is_scalar(in_shape->at(1)));
-    CHECK(shape_is_scalar(in_shape->at(2)));
+    for (int i = 1; i < 3; ++i) {
+      SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
+    }
 
     out_shape->clear();
     out_shape->push_back(in_shape->at(0));
@@ -56,13 +57,10 @@ class QuantizedReluProp : public OperatorProperty {
                  std::vector<int> *aux_type) const override {
     CHECK_EQ(in_type->size(), 3U);
     CHECK_EQ((*in_type)[0], mshadow::kInt8)
-      << "`dequantized_relu` only supports uint8 input for now";
-    CHECK_EQ((*in_type)[1], mshadow::kFloat32)
-      << "the second input of `dequantized_relu` should be a tensor "
-      << "with type of float32";
-    CHECK_EQ((*in_type)[2], mshadow::kFloat32)
-      << "the third input of `dequantized_relu` should be a tensor "
-      << "with type of float32";
+      << "`quantized_relu` only supports int8 input for now";
+    for (int i = 1; i < 3; ++i) {
+      TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
+    }
 
     out_type->clear();
     out_type->push_back(mshadow::kInt8);

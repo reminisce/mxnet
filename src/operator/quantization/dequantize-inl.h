@@ -98,8 +98,8 @@ inline bool DequantizeType(const nnvm::NodeAttrs& attrs,
                          std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 1U);
-  CHECK_EQ((*in_attrs)[0], mshadow::kUint8)
-    << "`dequantize` only supports uint8 input for now";
+  CHECK_EQ((*in_attrs)[0], mshadow::kInt8)
+    << "`dequantize` only supports int8 input for now";
   CHECK_EQ((*in_attrs)[1], mshadow::kFloat32)
     << "the second input of `dequantize` should be a tensor with type of float";
   CHECK_EQ((*in_attrs)[2], mshadow::kFloat32)

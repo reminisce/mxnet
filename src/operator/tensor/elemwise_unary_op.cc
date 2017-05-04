@@ -42,11 +42,12 @@ The storage type of ``relu`` output depends upon the input storage type:
    - relu(row_sparse) = row_sparse
 
 )code" ADD_FILELINE)
-.set_attr<FCompute>("FCompute<cpu>", UnaryOp::KernelCompute<
-  cpu, kernel_launch_op::relu>)
-.set_attr<FComputeEx>("FComputeEx<cpu>", UnaryOp::KernelComputeEx<
-  cpu, kernel_launch_op::relu>)
-.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_relu"});
+.set_attr<FCompute>("FCompute<cpu>",
+    UnaryLaunch<cpu, kernel_launch_op::relu>);
+.set_attr<FComputeEx>("FComputeEx<cpu>",
+    UnaryOp::KernelComputeEx<cpu, kernel_launch_op::relu>)
+.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_relu"})
+.set_attr<TQuantizedOpName>("TQuantizedOpName", "quantized_relu");
 
 MXNET_OPERATOR_REGISTER_BINARY_WITH_SPARSE_CPU(_backward_relu, kernel_launch_op::relu_grad);
 

@@ -33,6 +33,8 @@ DMLC_REGISTER_PARAMETER(QuantizedLRNParam);
 
 MXNET_REGISTER_OP_PROPERTY(quantized_lrn, QuantizedLRNProp)
 .add_argument("data", "NDArray-or-Symbol", "Input data.")
+.add_argument("min_data", "NDArray-or-Symbol", "")
+.add_argument("max_data", "NDArray-or-Symbol", "")
 .add_arguments(QuantizedLRNParam::__FIELDS__())
 .describe(R"code(Applies local response normalization to the input.
 

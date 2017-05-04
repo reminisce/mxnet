@@ -68,7 +68,7 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                        out_desc_,
                                        out.dptr_));
 
-    mxnet_op::Kernel<quantization_range_for_multiplication, gpu>::Launch(s, 1,
+    mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
        in_data[2].dptr<float>(),  in_data[3].dptr<float>(),
        in_data[4].dptr<float>(),  in_data[5].dptr<float>());
@@ -180,7 +180,7 @@ Operator* CreateOp<gpu>(int dtype,
                         const std::vector<TShape>& out_shape,
                         const QuantizedConv2DParam& param) {
   Operator *op = NULL;
-  MSHADOW_TYPE_SWITCH(param.out_type, DstType, {
+  MSHADOW_TYPE_SWITCH(mshadow::kFloat32, DstType, {
     op = new QuantizedConv2DCuDNNOp<int8_t, DstType, int32_t>(ctx,
       in_shape, out_shape, param);
   })

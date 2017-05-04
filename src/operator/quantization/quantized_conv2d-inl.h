@@ -15,18 +15,17 @@ namespace op {
 
 struct QuantizedConv2DParam :
   public dmlc::Parameter<QuantizedConv2DParam> {
+  TShape kernel;
   TShape stride;
   TShape pad;
-  int out_type;
+  uint32_t num_filter;
   DMLC_DECLARE_PARAMETER(QuantizedConv2DParam) {
+    DMLC_DECLARE_FIELD(kernel);
     DMLC_DECLARE_FIELD(stride)
     .describe("conv2d stride: (h, w)");
-    DMLC_DECLARE_FIELD(pad)
+    DMLC_DECLARE_FIELD(pad).set_default(TShape())
     .describe("pad for conv2d: (h, w)");
-    DMLC_DECLARE_FIELD(out_type)
-    .add_enum("float32", mshadow::kFloat32)
-    .add_enum("int8", mshadow::kInt8)
-    .set_default(mshadow::kFloat32);
+    DMLC_DECLARE_FIELD(num_filter);
   }
 };
 
@@ -65,21 +64,20 @@ class QuantizedConv2DProp : public OperatorProperty {
                   std::vector<TShape> *aux_shape) const override {
     using namespace mshadow;
     CHECK_EQ(in_shape->size(), 6U);
-    for (int i = 0; i < 2; ++i) {
-      CHECK(!shape_is_none(in_shape->at(0)));
-    }
-    for (int i = 2; i < 6; ++i) {
-      CHECK(shape_is_scalar(in_shape->at(i)));
-    }
+    CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape =  in_shape->at(0);
-    const TShape& fshape =  in_shape->at(1);
     CHECK_EQ(dshape.ndim(), 4U);
-    CHECK_EQ(fshape.ndim(), 4U);
     CHECK(dshape[3] % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
-    CHECK(fshape[0] % 4 == 0)
+    CHECK(param_.num_filter % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
-    CHECK_EQ(dshape[3], fshape[3]);
+
+    TShape fshape = Shape4(param_.num_filter, param_.kernel[0],
+        param_.kernel[1], dshape[3]);
+    SHAPE_ASSIGN_CHECK(*in_shape, 1, fshape);
+    for (int i = 2; i < 6; ++i) {
+      SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
+    }
 
     // input:  [NHWC](batch, in_height, in_width, in_channels)
     // filter: [NHWC](out_channels, filter_height, filter_width, in_channels)
@@ -103,18 +101,16 @@ class QuantizedConv2DProp : public OperatorProperty {
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
     CHECK_EQ(in_type->size(), 6U);
-    for (size_t i = 0; i < 2; ++i) {
-      CHECK_EQ((*in_type)[i], mshadow::kInt8)
-        << "`quantized_matmul` only supports int8 input for now";
-    }
+    CHECK_EQ((*in_type)[0], mshadow::kInt8)
+      << "`quantized_conv2d` only supports int8 input for now";
+    TYPE_ASSIGN_CHECK(*in_type, 1, mshadow::kInt8);
+
     for (size_t i = 2; i < 6; ++i) {
-      CHECK_EQ((*in_type)[i], mshadow::kFloat32)
-        << "the " << i << "th input of `quantized_matmul` should"
-        << "be a tensor with type of float32";
+      TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
     }
 
     out_type->clear();
-    out_type->push_back(param_.out_type);
+    out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     return true;

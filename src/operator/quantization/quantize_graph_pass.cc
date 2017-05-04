@@ -1,0 +1,200 @@
+/*!
+ *  Copyright (c) 2016 by Contributors
+ * \file quantization.cc
+ * \brief
+ */
+#include <nnvm/graph.h>
+#include <nnvm/pass.h>
+#include <mxnet/op_attr_types.h>
+#include "./quantize-inl.h"
+#include "./dequantize-inl.h"
+#include "./quantized_relu-inl.h"
+#include "../tensor/broadcast_reduce_op.h"
+
+namespace mxnet {
+namespace op {
+
+using nnvm::Node;
+using nnvm::NodePtr;
+using nnvm::NodeEntry;
+using nnvm::Graph;
+
+static const std::string   quantize_op_name = "_contrib_quantize";
+static const std::string dequantize_op_name = "_contrib_dequantize";
+
+NodePtr CreateNode(std::string op_name, std::string node_name) {
+  NodePtr node     = Node::Create();
+  if (op_name != "nullptr") node->attrs.op = Op::Get(op_name);
+  node->attrs.name = node_name;
+  return node;
+}
+
+NodePtr InsertNode(std::string op_name,
+    std::string node_name, NodePtr current, NodeEntry previous) {
+  NodePtr node = CreateNode(op_name, node_name);
+  node->inputs.emplace_back(previous);
+  current->inputs.emplace_back(NodeEntry{node, 0, 0});
+  return node;
+}
+
+std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs) {
+  std::string node_suffixs[3] = {"", "_min", "_max"};
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  nnvm::NodeEntryMap<NodePtr> entry_var;
+  auto is_quantize_op = [](NodePtr n) {
+    return n->op() &&
+           (n->op()->name == quantize_op_name) &&
+           n->inputs[0].node->is_variable();
+  };
+  DFSVisit(outputs, [&](const NodePtr& node) {
+    for (NodeEntry& e : node->inputs) {
+      if (is_quantize_op(e.node)) {
+        std::string node_name = e.node->attrs.name;
+        if (!entry_var.count(e)) {
+          entry_var[e] = CreateNode("nullptr", node_name + node_suffixs[e.index]);
+        }
+        e.node = entry_var[e];
+        e.index = 0;
+        e.version = 0;
+      }
+    }
+  });
+  return outputs;
+}
+
+Graph QuantizeGraph(Graph &&src) {
+  static auto& quantized_op_map = Op::GetAttr<mxnet::TQuantizedOpName>("TQuantizedOpName");
+  bool offline = src.GetAttr<int>("offline");
+
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  DFSVisit(src.outputs, [&](const NodePtr& node) {
+    LOG(INFO) << "node: " << node->attrs.name
+      << ", " << node->attrs.parsed.empty();
+    LOG(INFO) << "dict: ";
+    for (const auto& kv: node->attrs.dict) {
+      LOG(INFO) << kv.first << ": " << kv.second;
+    }
+
+    NodePtr new_node = Node::Create();
+    if (quantized_op_map.count(node->op())) {
+      new_node->attrs.op = Op::Get(quantized_op_map[node->op()]);
+      new_node->attrs.name = "quantized_" + node->attrs.name;
+      new_node->attrs.dict = node->attrs.dict;
+      if (new_node->op()->attr_parser != nullptr) {
+        LOG(INFO) << new_node->attrs.name << ": attr_parser";
+        new_node->op()->attr_parser(&(new_node->attrs));
+      }
+
+      // add data into quantized op input
+      for (const auto& e : node->inputs) {
+        NodePtr mirror_node = mirror_map.at(e.node.get());
+        NodeEntry mirror_entry = NodeEntry{
+          mirror_node, e.index, e.version};
+        if (!quantized_op_map.count(e.node->op()) &&
+            (mirror_node->op() == nullptr ||
+             mirror_node->op()->name != quantize_op_name)) {
+          NodePtr quantize_node = InsertNode(quantize_op_name,
+            e.node->attrs.name + "_quantize", new_node, mirror_entry);
+          quantize_node->attrs.parsed = std::move(QuantizeParam());
+
+          NodePtr min_node = InsertNode("min",
+              e.node->attrs.name + "_min", quantize_node, mirror_entry);
+          min_node->attrs.parsed = std::move(ReduceAxesParam());
+
+          NodePtr max_node = InsertNode("max",
+              e.node->attrs.name + "_max", quantize_node, mirror_entry);
+          max_node->attrs.parsed = std::move(ReduceAxesParam());
+
+          mirror_map[e.node.get()] = std::move(quantize_node);
+        } else {
+          new_node->inputs.emplace_back(mirror_entry);
+        }
+        // the input should be `quantize` or quantized version op now
+      }
+
+      // add min and max into quantized op input
+      // assume order of quantized op inputs is:
+      //   data1, data2, ..., min1, max1, min2, max2, ...
+      for (const auto& e : node->inputs) {
+        NodePtr mirror_node = mirror_map.at(e.node.get());
+        NodeEntry mirror_entry = NodeEntry{
+          mirror_node, e.index, e.version};
+        // for quantize node
+        uint32_t min_index = 1;
+        uint32_t max_index = 2;
+        if (quantized_op_map.count(e.node->op())) {
+          size_t  num_outputs = e.node->num_outputs();
+          min_index = num_outputs + 2 * e.index;
+          max_index = num_outputs + 2 * e.index + 1;
+        } else {
+          CHECK(mirror_node->op()->name == quantize_op_name)
+            << "The input is not quantize or quantized_op";
+        }
+        new_node->inputs.emplace_back(NodeEntry{mirror_node, min_index, 0});
+        new_node->inputs.emplace_back(NodeEntry{mirror_node, max_index, 0});
+      }
+    } else {
+      *new_node = *node;
+      new_node->inputs.clear();
+      for (const auto& e : node->inputs) {
+        NodePtr mirror_node = mirror_map.at(e.node.get());
+        NodeEntry mirror_entry = NodeEntry{
+          mirror_node, e.index, e.version};
+        size_t num_outputs = e.node->num_outputs();
+        uint32_t min_index = num_outputs + 2 * e.index;
+        uint32_t max_index = num_outputs + 2 * e.index + 1;
+
+        // if input node is quantized operator, add dequantize node
+        if (quantized_op_map.count(e.node->op())) {
+          NodePtr dequantize_node = CreateNode(dequantize_op_name,
+            e.node->attrs.name + "_dequantize");
+          dequantize_node->inputs.emplace_back(mirror_entry);
+          dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, min_index, 0});
+          dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, max_index, 0});
+          dequantize_node->attrs.parsed = std::move(DequantizeParam());
+
+          new_node->inputs.emplace_back(NodeEntry{dequantize_node, 0, 0});
+          mirror_map[e.node.get()] = std::move(dequantize_node);
+        } else {
+          new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
+        }
+      }
+    }
+    mirror_map[node.get()] = std::move(new_node);
+  });
+
+  std::vector<NodeEntry> outputs;
+  for (const auto& e: src.outputs) {
+    if (quantized_op_map.count(e.node->op())) {
+      NodePtr mirror_node = mirror_map.at(e.node.get());
+      NodeEntry mirror_entry = NodeEntry{mirror_node, e.index, e.version};
+      size_t num_inputs = e.node->num_inputs();
+      uint32_t min_index = num_inputs + 2 * e.index;
+      uint32_t max_index = num_inputs + 2 * e.index + 1;
+
+      NodePtr dequantize_node = CreateNode(dequantize_op_name,
+          e.node->attrs.name + "_dequantize");
+      dequantize_node->inputs.emplace_back(mirror_entry);
+      dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, min_index, 0});
+      dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, max_index, 0});
+      dequantize_node->attrs.parsed = std::move(DequantizeParam());
+      outputs.emplace_back(NodeEntry{dequantize_node, 0, 0});
+    } else {
+      outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});
+    }
+  }
+
+  if (offline) outputs = OfflineParams(std::move(outputs));
+
+  Graph ret;
+  ret.outputs = std::move(outputs);
+  return ret;
+}
+
+NNVM_REGISTER_PASS(QuantizeGraph)
+.describe("")
+.set_body(QuantizeGraph)
+.set_change_graph(true);
+
+}  // namespace op
+}  // namespace mxnet

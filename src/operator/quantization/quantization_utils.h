@@ -72,7 +72,7 @@ MSHADOW_XINLINE void QuantizationRangeForMultiplication(
   *max_c = c_float_for_one_quant_level * c_highest;
 }
 
-struct quantization_range_for_multiplication {
+struct QuantizationRangeForMultiplicationStruct {
   MSHADOW_XINLINE static void Map(int i,
                                   float *min_c,
                                   float *max_c,
@@ -84,8 +84,6 @@ struct quantization_range_for_multiplication {
     min_a[i], max_a[i], min_b[i], max_b[i], min_c, max_c);
   }
 };
-
-
 
 
 
