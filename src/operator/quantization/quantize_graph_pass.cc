@@ -21,6 +21,8 @@ using nnvm::Graph;
 
 static const std::string   quantize_op_name = "_contrib_quantize";
 static const std::string dequantize_op_name = "_contrib_dequantize";
+static const std::string quantize_down_and_shrink_range_op_name =
+    "quantize_down_and_shrink_range";
 
 NodePtr CreateNode(std::string op_name, std::string node_name) {
   NodePtr node     = Node::Create();
@@ -64,16 +66,11 @@ std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs) {
 
 Graph QuantizeGraph(Graph &&src) {
   static auto& quantized_op_map = Op::GetAttr<mxnet::TQuantizedOpName>("TQuantizedOpName");
+  static auto& need_shrink_map = Op::GetAttr<mxnet::TQuantizationNeedShrink>("TQuantizationNeedShrink");
   bool offline = src.GetAttr<int>("offline");
 
   std::unordered_map<Node*, NodePtr> mirror_map;
   DFSVisit(src.outputs, [&](const NodePtr& node) {
-    LOG(INFO) << "node: " << node->attrs.name
-      << ", " << node->attrs.parsed.empty();
-    LOG(INFO) << "dict: ";
-    for (const auto& kv: node->attrs.dict) {
-      LOG(INFO) << kv.first << ": " << kv.second;
-    }
 
     NodePtr new_node = Node::Create();
     if (quantized_op_map.count(node->op())) {
@@ -81,7 +78,6 @@ Graph QuantizeGraph(Graph &&src) {
       new_node->attrs.name = "quantized_" + node->attrs.name;
       new_node->attrs.dict = node->attrs.dict;
       if (new_node->op()->attr_parser != nullptr) {
-        LOG(INFO) << new_node->attrs.name << ": attr_parser";
         new_node->op()->attr_parser(&(new_node->attrs));
       }
 
@@ -132,6 +128,20 @@ Graph QuantizeGraph(Graph &&src) {
         }
         new_node->inputs.emplace_back(NodeEntry{mirror_node, min_index, 0});
         new_node->inputs.emplace_back(NodeEntry{mirror_node, max_index, 0});
+      }
+
+      if (need_shrink_map.get(new_node->op(), false)) {
+        NodePtr shrink_node = Node::Create();
+        shrink_node->attrs.op = Op::Get(quantize_down_and_shrink_range_op_name);
+        shrink_node->attrs.name = quantize_down_and_shrink_range_op_name +
+            "_" + node->attrs.name;
+        if (shrink_node->op()->attr_parser != nullptr) {
+          shrink_node->op()->attr_parser(&(shrink_node->attrs));
+        }
+        for (size_t i = 0; i < 3; ++i) {
+          shrink_node->inputs.emplace_back(NodeEntry{new_node, i, 0});
+        }
+        new_node = shrink_node;
       }
     } else {
       *new_node = *node;

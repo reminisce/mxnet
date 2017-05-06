@@ -45,5 +45,8 @@ MXNET_REGISTER_OP_PROPERTY(quantized_fully_connected, QuantizedFullyConnectedPro
 .add_argument("max_bias", "NDArray-or-Symbol", "maximum value of matrix b")
 .add_arguments(QuantizedFullyConnectedParam::__FIELDS__());
 
+NNVM_REGISTER_OP(quantized_fully_connected)
+.set_attr<TQuantizationNeedShrink>("TQuantizationNeedShrink", true);
+
 }  // namespace op
 }  // namespace mxnet

@@ -11,11 +11,30 @@
 namespace mxnet {
 namespace op {
 
+struct CastStruct {
+  MSHADOW_XINLINE static void Map(int i, int32_t *out, const float *in) {
+    out[i] = static_cast<int32_t>(in[i]);
+  }
+};
+
+// value + bias_value * (range1 / limit_range1) * (limit_range2 / range2)
 struct QuantizedBiasAddStruct {
-  MSHADOW_XINLINE static void Map(int i, float *out_min, float *out_max,
-                                  const float *min_bias, const float *max_bias) {
-    out_min[i] += min_bias[i];
-    out_max[i] += max_bias[i];
+  MSHADOW_XINLINE static void Map(int i, size_t k, int32_t *out,
+    const int8_t *bias, const float *min_out, const float *max_out,
+    const float *min_bias, const float *max_bias) {
+    typedef int32_t T1;
+    typedef int8_t  T2;
+    float float_for_one_out_quant = (max_out[0] - min_out[0]) /
+        (static_cast<double>(MaxValue<T1>()) -
+         static_cast<double>(MinValue<T1>()));
+    float float_for_one_bias_quant = (max_bias[0] - min_bias[0]) /
+        (static_cast<double>(MaxValue<T2>()) -
+         static_cast<double>(MinValue<T2>()));
+    printf("%f\n", float_for_one_out_quant);
+    printf("%f\n", float_for_one_bias_quant);
+    out[i] = (out[i] * float_for_one_out_quant +
+              bias[i%k] * float_for_one_bias_quant) /
+             float_for_one_out_quant;
   }
 };
 
@@ -42,6 +61,7 @@ class QuantizedFullyConnectedCublasOp : public Operator {
                        const std::vector<TBlob> &out_data,
                        const std::vector<TBlob> &aux_args) {
     using namespace mshadow;
+    using namespace mxnet_op;
     CHECK_EQ(in_data.size(),  9U);
     CHECK_EQ(out_data.size(), 3U);
     Stream<gpu> *s = ctx.get_stream<gpu>();
@@ -58,7 +78,7 @@ class QuantizedFullyConnectedCublasOp : public Operator {
 
     // row_C = col_C(T) = cublas(col_B * col_A(T)) = cublas(row_B(T), row_A)
     // row_C = col_C(T) = cublas(col_B(T) * col_A(T)) = cublas(row_B, row_A)
-    int m = dshape[0], n = dshape[1], k = wshape[0];
+    size_t m = dshape[0], n = dshape[1], k = wshape[0];
     CUBLAS_CALL(cublasGemmEx(s->blas_handle_,
                              CUBLAS_OP_T,
                              CUBLAS_OP_N,
@@ -79,19 +99,20 @@ class QuantizedFullyConnectedCublasOp : public Operator {
                              cmp_type_,
                              CUBLAS_GEMM_DFALT));
 
-    Tensor<gpu, 1, SrcType> bias_tensor = bias.get<gpu, 1, SrcType>(s);
-    Tensor<gpu, 2, DstType>  out_tensor =  out.get<gpu, 2, DstType>(s);
-    out_tensor += repmat(mshadow::expr::tcast<DstType>(bias_tensor), out_tensor.size(0));
+    // temporary solution
+    // TODO(ziheng) use GemmEx CUDA_R_32I mode
+    Kernel<CastStruct, gpu>::Launch(s, out.Size(),
+        out.dptr<int32_t>(), static_cast<float*>(out.dptr_));
 
-    mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
+    Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
        in_data[3].dptr<float>(),  in_data[4].dptr<float>(),
        in_data[5].dptr<float>(),  in_data[6].dptr<float>());
 
-    mxnet_op::Kernel<QuantizedBiasAddStruct, gpu>::Launch(s, 1,
-      out_data[1].dptr<float>(), out_data[2].dptr<float>(),
-       in_data[7].dptr<float>(),  in_data[8].dptr<float>());
-
+    // Kernel<QuantizedBiasAddStruct, gpu>::Launch(s, out.Size(),
+    //     k, out.dptr<int32_t>(), bias.dptr<int8_t>(),
+    //     out_data[1].dptr<float>(), out_data[2].dptr<float>(),
+    //      in_data[7].dptr<float>(),  in_data[8].dptr<float>());
   }
 
   virtual void Backward(const OpContext &ctx,
@@ -110,13 +131,6 @@ class QuantizedFullyConnectedCublasOp : public Operator {
   cudaDataType dst_type_;
   cudaDataType cmp_type_;
 
-  cudaDataType_t convertToCudaDataType(int dtype) {
-    cudaDataType_t converted = CUDA_R_32F;
-    MSHADOW_TYPE_SWITCH(dtype, mxDType, {
-      converted = mshadow::DataType<mxDType>::kCudaFlag;
-    })
-    return converted;
-  }
 };  // class QuantizedFullyConnectedCublasOp
 
 

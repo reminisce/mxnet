@@ -86,7 +86,7 @@ class QuantizedFullyConnectedProp : public OperatorProperty {
     }
 
     out_type->clear();
-    out_type->push_back(mshadow::kFloat32);
+    out_type->push_back(mshadow::kInt32);
     out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     return true;

@@ -77,7 +77,7 @@ class QuantizedMatmulCublasOp : public Operator {
     // temporary solution
     // TODO(ziheng) use GemmEx CUDA_R_32I mode
     mxnet_op::Kernel<CastStruct, gpu>::Launch(s, out.Size(),
-        out.dptr<int32_t>(), static_cast<float *>(out.dptr_));
+        out.dptr<int32_t>(), static_cast<float*>(out.dptr_));
 
     mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
