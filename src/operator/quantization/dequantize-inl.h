@@ -39,6 +39,7 @@ struct DequantizeParam : public dmlc::Parameter<DequantizeParam> {
   DMLC_DECLARE_PARAMETER(DequantizeParam) {
     DMLC_DECLARE_FIELD(out_type)
     .add_enum("float32", mshadow::kFloat32)
+    .set_default(mshadow::kFloat32)
     .describe("Output data type.");
   }
 };
@@ -98,8 +99,9 @@ inline bool DequantizeType(const nnvm::NodeAttrs& attrs,
                          std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 1U);
-  CHECK_EQ((*in_attrs)[0], mshadow::kInt8)
-    << "`dequantize` only supports int8 input for now";
+  CHECK(in_attrs->at(0) == mshadow::kInt8 ||
+        in_attrs->at(0) == mshadow::kInt32)
+    << "`dequantize` only supports int8 or int32 input for now";
   CHECK_EQ((*in_attrs)[1], mshadow::kFloat32)
     << "the second input of `dequantize` should be a tensor with type of float";
   CHECK_EQ((*in_attrs)[2], mshadow::kFloat32)

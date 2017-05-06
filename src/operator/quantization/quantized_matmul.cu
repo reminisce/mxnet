@@ -11,6 +11,13 @@
 namespace mxnet {
 namespace op {
 
+
+struct CastStruct {
+  MSHADOW_XINLINE static void Map(int i, int32_t *out, const float *in) {
+    out[i] = static_cast<int32_t>(in[i]);
+  }
+};
+
 template<typename SrcType, typename DstType, typename CmpType>
 class QuantizedMatmulCublasOp : public Operator {
  public:
@@ -66,6 +73,11 @@ class QuantizedMatmulCublasOp : public Operator {
                              k,
                              cmp_type_,
                              CUBLAS_GEMM_DFALT));
+
+    // temporary solution
+    // TODO(ziheng) use GemmEx CUDA_R_32I mode
+    mxnet_op::Kernel<CastStruct, gpu>::Launch(s, out.Size(),
+        out.dptr<int32_t>(), static_cast<float *>(out.dptr_));
 
     mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),

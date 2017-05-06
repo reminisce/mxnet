@@ -3,8 +3,8 @@
  * \file quantize-inl.h
  * \brief implementation of quantize operation
  */
-#ifndef MXNET_OPERATOR_CONTRIB_QUANTIZE_INL_H_
-#define MXNET_OPERATOR_CONTRIB_QUANTIZE_INL_H_
+#ifndef MXNET_OPERATOR_CONTRIB_QUANTIZE_DOWN_AND_SHRINK_RANGE_INL_H_
+#define MXNET_OPERATOR_CONTRIB_QUANTIZE_DOWN_AND_SHRINK_RANGE_INL_H_
 
 #include <mxnet/operator_util.h>
 #include <vector>
@@ -16,55 +16,16 @@
 namespace mxnet {
 namespace op {
 
-struct QuantizeParam : public dmlc::Parameter<QuantizeParam> {
-  int   out_type;
-  DMLC_DECLARE_PARAMETER(QuantizeParam) {
-    DMLC_DECLARE_FIELD(out_type)
-    .add_enum("int8", mshadow::kInt8)
-    .set_default(mshadow::kInt8)
-    .describe("Output data type.");
+struct QuantizeDownAndShrinkRangeParam : public dmlc::Parameter<QuantizeDownAndShrinkRangeParam> {
+  DMLC_DECLARE_PARAMETER(QuantizeDownAndShrinkRangeParam) {
   }
 };
 
-struct quantize {
-  template<typename DstDType, typename SrcDType>
-  MSHADOW_XINLINE static void Map(int i, DstDType *out, float *omin_range,
-                                  float *omax_range, const SrcDType *in,
-                                  const float *imin_range, const float *imax_range,
-                                  double min_limit, double max_limit) {
-    float scale = (max_limit - min_limit) / (*imax_range - *imin_range);
-    out[i] = static_cast<DstDType>((in[i] - *imin_range) * scale + 0.5);
-    *omin_range = *imin_range;
-    *omax_range = *imax_range;
-  }
-};
-
-template<typename xpu>
-void QuantizeDownAndShrinkRangeCompute(const nnvm::NodeAttrs& attrs,
-                                       const OpContext& ctx,
-                                       const std::vector<TBlob>& inputs,
-                                       const std::vector<OpReqType>& req,
-                                       const std::vector<TBlob>& outputs) {
-  using namespace mshadow;
-  using namespace mxnet_op;
-  Stream<xpu> *s = ctx.get_stream<xpu>();
-
-  const QuantizeParam& param = nnvm::get<QuantizeParam>(attrs.parsed);
-  MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DstDType, {
-  MSHADOW_TYPE_SWITCH( inputs[0].type_flag_, SrcDType, {
-
-    Kernel<quantize, xpu>::Launch(s, outputs[0].Size(),
-      outputs[0].dptr<DstDType>(), outputs[1].dptr<float>(), outputs[2].dptr<float>(),
-       inputs[0].dptr<SrcDType>(),  inputs[1].dptr<float>(),  inputs[2].dptr<float>(),
-      std::numeric_limits<DstDType>::min(), std::numeric_limits<DstDType>::max());
-  });
-  });
-}
-
-inline bool QuantizeShape(const nnvm::NodeAttrs& attrs,
+inline bool QuantizeDownAndShrinkRangeShape(const nnvm::NodeAttrs& attrs,
                           std::vector<TShape> *in_attrs,
                           std::vector<TShape> *out_attrs) {
-  const QuantizeParam& param = nnvm::get<QuantizeParam>(attrs.parsed);
+  const QuantizeDownAndShrinkRangeParam& param =
+    nnvm::get<QuantizeDownAndShrinkRangeParam>(attrs.parsed);
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 3U);
 
@@ -79,18 +40,21 @@ inline bool QuantizeShape(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
-inline bool QuantizeType(const nnvm::NodeAttrs& attrs,
+inline bool QuantizeDownAndShrinkRangeType(const nnvm::NodeAttrs& attrs,
                          std::vector<int> *in_attrs,
                          std::vector<int> *out_attrs) {
-  const QuantizeParam& param = nnvm::get<QuantizeParam>(attrs.parsed);
+  const QuantizeDownAndShrinkRangeParam& param =
+    nnvm::get<QuantizeDownAndShrinkRangeParam>(attrs.parsed);
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 3U);
-  CHECK_EQ((*in_attrs)[0], mshadow::kFloat32)
-    << "`quantize` only supports float32 input for now";
+  CHECK_EQ((*in_attrs)[0], mshadow::kInt32)
+    << "`quantize_down_and_shrink_range` only supports int32 input for now";
   CHECK_EQ((*in_attrs)[1], mshadow::kFloat32)
-    << "the second input of `quantize` should be a tensor with type of float";
+    << "the second input of `quantize_down_and_shrink_range` "
+    << "should be a tensor with type of float";
   CHECK_EQ((*in_attrs)[2], mshadow::kFloat32)
-    << "the third input of `quantize` should be a tensor with type of float";
+      << "the third input of `quantize_down_and_shrink_range` "
+      << "should be a tensor with type of float";
   TYPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::kInt8);
   TYPE_ASSIGN_CHECK(*out_attrs, 1, mshadow::kFloat32);
   TYPE_ASSIGN_CHECK(*out_attrs, 2, mshadow::kFloat32);
@@ -99,4 +63,4 @@ inline bool QuantizeType(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_CONTRIB_QUANTIZE_INL_H_
+#endif  // MXNET_OPERATOR_CONTRIB_QUANTIZE_DOWN_AND_SHRINK_RANGE_INL_H_
