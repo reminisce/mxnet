@@ -60,6 +60,28 @@ struct quantize {
   }
 };
 
+template<typename T>
+MSHADOW_XINLINE float MaxAbs(T a, T b) {
+  using namespace std;
+  return max(abs(static_cast<float>(a)), abs(static_cast<float>(b)));
+}
+
+// keep zero-center
+struct quantize_v2 {
+  template<typename DstDType, typename SrcDType>
+  MSHADOW_XINLINE static void Map(int i, DstDType *out, float *omin_range,
+                                  float *omax_range, const SrcDType *in,
+                                  const float *imin_range, const float *imax_range) {
+    using mshadow::red::limits::MinValue;
+    using mshadow::red::limits::MaxValue;
+    float range = MaxAbs(*imax_range, *imin_range);
+    float scale = MaxAbs(MaxValue<DstDType>(), MinValue<DstDType>()) / range;
+    out[i] = static_cast<DstDType>(in[i] * scale + 0.5);
+    *omin_range = -range;
+    *omax_range =  range;
+  }
+};
+
 template<typename xpu>
 void QuantizeCompute(const nnvm::NodeAttrs& attrs,
                      const OpContext& ctx,
@@ -72,9 +94,9 @@ void QuantizeCompute(const nnvm::NodeAttrs& attrs,
 
   // for now, only supports quantize from uint8 to float
   // TODO(ziheng) consider add MSHADOW_INTEGER_TYPE_SWITCH
-  typedef uint8_t DstDType;
   typedef float SrcDType;
-  Kernel<quantize, xpu>::Launch(s, outputs[0].Size(),
+  typedef int8_t DstDType;
+  Kernel<quantize_v2, xpu>::Launch(s, outputs[0].Size(),
     outputs[0].dptr<DstDType>(), outputs[1].dptr<float>(), outputs[2].dptr<float>(),
     inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>());
 }
