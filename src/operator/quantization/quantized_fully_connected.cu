@@ -30,8 +30,6 @@ struct QuantizedBiasAddStruct {
     float float_for_one_bias_quant = (max_bias[0] - min_bias[0]) /
         (static_cast<double>(MaxValue<T2>()) -
          static_cast<double>(MinValue<T2>()));
-    printf("%f\n", float_for_one_out_quant);
-    printf("%f\n", float_for_one_bias_quant);
     out[i] = (out[i] * float_for_one_out_quant +
               bias[i%k] * float_for_one_bias_quant) /
              float_for_one_out_quant;
@@ -45,11 +43,12 @@ class QuantizedFullyConnectedCublasOp : public Operator {
                                    const std::vector<TShape>& in_shape,
                                    const std::vector<TShape>& out_shape,
                                    const QuantizedFullyConnectedParam& param) {
+    alpha_ = 1.0f;
+    beta_  = 0.0f;
     src_type_ = mshadow::DataType<SrcType>::kCudaFlag;
     dst_type_ = mshadow::DataType<DstType>::kCudaFlag;
     cmp_type_ = mshadow::DataType<CmpType>::kCudaFlag;
-    alpha_ = 1.0f;
-    beta_  = 0.0f;
+    param_ = param;
   }
 
   ~QuantizedFullyConnectedCublasOp() {
@@ -62,13 +61,13 @@ class QuantizedFullyConnectedCublasOp : public Operator {
                        const std::vector<TBlob> &aux_args) {
     using namespace mshadow;
     using namespace mxnet_op;
-    CHECK_EQ(in_data.size(),  9U);
+    size_t num_inputs = param_.no_bias ? 2 : 3;
+    CHECK_EQ(in_data.size(),  num_inputs * 3);
     CHECK_EQ(out_data.size(), 3U);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     CHECK_EQ(s->blas_handle_ownership_, Stream<gpu>::OwnHandle);
     const TBlob& data   =  in_data[0];
     const TBlob& weight =  in_data[1];
-    const TBlob& bias   =  in_data[2];
     const TBlob& out    = out_data[0];
     TShape dshape = data.shape_;
     TShape wshape = weight.shape_;
@@ -99,15 +98,10 @@ class QuantizedFullyConnectedCublasOp : public Operator {
                              cmp_type_,
                              CUBLAS_GEMM_DFALT));
 
-    // temporary solution
-    // TODO(ziheng) use GemmEx CUDA_R_32I mode
-    Kernel<CastStruct, gpu>::Launch(s, out.Size(),
-        out.dptr<int32_t>(), static_cast<float*>(out.dptr_));
-
     Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
-       in_data[3].dptr<float>(),  in_data[4].dptr<float>(),
-       in_data[5].dptr<float>(),  in_data[6].dptr<float>());
+       in_data[num_inputs].dptr<float>(),   in_data[num_inputs+1].dptr<float>(),
+       in_data[num_inputs+2].dptr<float>(), in_data[num_inputs+3].dptr<float>());
 
     // Kernel<QuantizedBiasAddStruct, gpu>::Launch(s, out.Size(),
     //     k, out.dptr<int32_t>(), bias.dptr<int8_t>(),
@@ -121,15 +115,18 @@ class QuantizedFullyConnectedCublasOp : public Operator {
                         const std::vector<TBlob> &out_data,
                         const std::vector<OpReqType> &req,
                         const std::vector<TBlob> &in_grad,
-                        const std::vector<TBlob> &aux_args) {}
+                        const std::vector<TBlob> &aux_args) {
+    LOG(INFO) << "Not implemented";
+  }
 
 
  private:
-  float alpha_;
-  float beta_;
+  CmpType alpha_;
+  CmpType beta_;
   cudaDataType src_type_;
   cudaDataType dst_type_;
   cudaDataType cmp_type_;
+  QuantizedFullyConnectedParam param_;
 
 };  // class QuantizedFullyConnectedCublasOp
 
@@ -141,7 +138,7 @@ Operator* CreateOp<gpu>(int dtype,
                         const std::vector<TShape>& out_shape,
                         const QuantizedFullyConnectedParam& param) {
   Operator *op = NULL;
-  op = new QuantizedFullyConnectedCublasOp<int8_t, float, float>(ctx,
+  op = new QuantizedFullyConnectedCublasOp<int8_t, int32_t, int32_t>(ctx,
     in_shape, out_shape, param);
   return op;
 }

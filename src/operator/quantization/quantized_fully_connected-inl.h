@@ -17,8 +17,10 @@ namespace op {
 struct QuantizedFullyConnectedParam :
   public dmlc::Parameter<QuantizedFullyConnectedParam> {
   uint32_t num_hidden;
+  bool no_bias;
   DMLC_DECLARE_PARAMETER(QuantizedFullyConnectedParam) {
     DMLC_DECLARE_FIELD(num_hidden);
+    DMLC_DECLARE_FIELD(no_bias).set_default(false);
   }
 };
 
@@ -32,8 +34,13 @@ Operator* CreateOp(int dtype,
 class QuantizedFullyConnectedProp : public OperatorProperty {
  public:
   std::vector<std::string> ListArguments() const override {
-    return {"data", "weight", "bias", "min_data", "max_data",
-        "min_weight", "max_weight", "min_bias", "max_bias"};
+    if (param_.no_bias) {
+      return {"data", "weight", "min_data", "max_data",
+          "min_weight", "max_weight"};
+    } else {
+      return {"data", "weight", "bias", "min_data", "max_data",
+          "min_weight", "max_weight", "min_bias", "max_bias"};
+    }
   }
 
   std::vector<std::string> ListOutputs() const override {
@@ -52,17 +59,20 @@ class QuantizedFullyConnectedProp : public OperatorProperty {
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
     using namespace mshadow;
-    CHECK_EQ(in_shape->size(), 9U);
+    uint32_t num_inputs = param_.no_bias ? 2 : 3;
+    CHECK_EQ(in_shape->size(), num_inputs * 3);
 
     CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape = in_shape->at(0);
 
     TShape wshape = Shape2(param_.num_hidden, dshape[1]);
     SHAPE_ASSIGN_CHECK(*in_shape, 1, wshape);
-    TShape bshape = Shape1(param_.num_hidden);
-    SHAPE_ASSIGN_CHECK(*in_shape, 2, bshape);
+    if (!param_.no_bias) {
+      TShape bshape = Shape1(param_.num_hidden);
+      SHAPE_ASSIGN_CHECK(*in_shape, 2, bshape);
+    }
 
-    for (int i = 3; i < 9; ++i) {
+    for (size_t i = num_inputs; i < 3 * num_inputs; ++i) {
       SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
     }
 
@@ -76,12 +86,13 @@ class QuantizedFullyConnectedProp : public OperatorProperty {
   bool InferType(std::vector<int> *in_type,
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
-    CHECK_EQ(in_type->size(), 9U);
+    uint32_t num_inputs = param_.no_bias ? 2 : 3;
+    CHECK_EQ(in_type->size(), num_inputs * 3);
 
-    for (size_t i = 0; i < 3; ++i) {
+    for (size_t i = 0; i < num_inputs; ++i) {
       TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kInt8);
     }
-    for (size_t i = 3; i < 9; ++i) {
+    for (size_t i = num_inputs; i < 3 * num_inputs; ++i) {
       TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
     }
 

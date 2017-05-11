@@ -48,10 +48,13 @@ struct quantize {
   template<typename DstDType, typename SrcDType>
   MSHADOW_XINLINE static void Map(int i, DstDType *out, float *omin_range,
                                   float *omax_range, const SrcDType *in,
-                                  const float *imin_range, const float *imax_range,
-                                  double min_limit, double max_limit) {
-    float scale = (max_limit - min_limit) / (*imax_range - *imin_range);
-    out[i] = static_cast<DstDType>((in[i] - *imin_range) * scale + 0.5);
+                                  const float *imin_range, const float *imax_range) {
+    using mshadow::red::limits::MinValue;
+    using mshadow::red::limits::MaxValue;
+    float scale = (MaxValue<DstDType>() - MinValue<DstDType>()) /
+                  (*imax_range - *imin_range);
+    out[i] = static_cast<DstDType>((in[i] - *imin_range) * scale + 0.5) +
+        MinValue<DstDType>();
     *omin_range = *imin_range;
     *omax_range = *imax_range;
   }
@@ -73,8 +76,7 @@ void QuantizeCompute(const nnvm::NodeAttrs& attrs,
   typedef float SrcDType;
   Kernel<quantize, xpu>::Launch(s, outputs[0].Size(),
     outputs[0].dptr<DstDType>(), outputs[1].dptr<float>(), outputs[2].dptr<float>(),
-    inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>(),
-    std::numeric_limits<DstDType>::min(), std::numeric_limits<DstDType>::max());
+    inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>());
 }
 
 inline bool QuantizeShape(const nnvm::NodeAttrs& attrs,
