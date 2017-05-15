@@ -781,7 +781,7 @@ inline void CopyFromToCsrImpl(const NDArray from, NDArray *to, RunContext ctx) {
   if (!from.storage_initialized()) {
     LOG(FATAL) << "To be implemented";
     // TODO(haibin) implement FillZerosCsrImpl
-    //op::FillZerosCsrImpl<to_xpu>(s, to);
+    // op::FillZerosCsrImpl<to_xpu>(s, to);
     return;
   }
   // Allocate storage
