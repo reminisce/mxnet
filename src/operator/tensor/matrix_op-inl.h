@@ -638,97 +638,6 @@ void DotCsrDnsDnsImpl(const OpContext& ctx,
 }
 
 /*!
- * \brief Tempalte declaration of dot(csr, dns) = rsp.
- * Whether csr and dns are transposed before dot operation
- * is determined by trans_csr and trans_dns, respectively.
- * For now we only implemented the case when trans_dns = false.
- */
-template<bool trans_csr, bool trans_dns, int req>
-struct DotCsrDnsRsp;
-
-/*!
- * \brief Kernel of dot(csr, dns) = rsp
- */
-template<int req>
-struct DotCsrDnsRsp<false, false, req> {
-  /*!
-   * \brief This function represents performing an inner product between a row of lhs
-   * and a column of rhs and then assigning the value to out[i].
-   * \param i i-th element in out 1D view
-   * \param out output matrix's non-zero rows
-   * \param row_idx output matrix row_idx in RSP format
-   * \param data_l csr values of lhs
-   * \param indptr_l csr indptr of lhs
-   * \param col_idx_l csr col_idx of lhs
-   * \param data_r dense data of rhs
-   * \param num_cols number of columns of output
-   */
-  template<typename DType, typename RType, typename IType, typename CType>
-  MSHADOW_XINLINE static void Map(int i, DType* out, const RType* row_idx, const DType* data_l,
-                                  const IType* indptr_l, const CType* col_idx_l,
-                                  const DType* data_r, const int num_cols) {
-    const int irow = row_idx[i/num_cols];  // row id of the lhs
-    const int icol = i % num_cols;  // col id of the rhs
-    DType sum = 0;
-    for (IType j = indptr_l[irow]; j < indptr_l[irow+1]; ++j) {
-      const CType cur_col = col_idx_l[j];  // corresponding row id of the rhs
-      sum += data_l[j] * data_r[cur_col*num_cols+icol];
-    }
-    KERNEL_ASSIGN(out[i], req, sum);
-  }
-};
-
-/*!
- * \brief Kernel of dot(csr.T(), dns) = rsp
- */
-template<int req>
-struct DotCsrDnsRsp<true, false, req> {
-  /*!
-   * \brief This function represents performing an inner product between a column of lhs
-   * and a column of rhs and then assigning the value to out[i].
-   * \param i i-th element in out 1D view
-   * \param out output row sparse matrix in 1-D view
-   * \param row_idx aux_data of out
-   * \param data_l csr values of lhs
-   * \param indptr_l csr indptr of lhs
-   * \param col_idx_l csr col_idx of lhs
-   * \param data_r dense data of rhs
-   * \param num_rows_l number of rows of lhs
-   * \param num_cols number of columns of outputs
-   */
-  template<typename DType, typename RType, typename IType, typename CType>
-  MSHADOW_XINLINE static void Map(int i, DType* out, const RType* row_idx,
-                                  const DType* data_l, const IType* indptr_l,
-                                  const CType* col_idx_l, const DType* data_r,
-                                  const int num_rows_l, const int num_cols) {
-    const int irow = row_idx[i/num_cols];  // col id of the lhs
-    const int icol = i % num_cols;  // col id of the rhs
-    DType sum = 0;
-    for (int k = 0; k < num_rows_l; ++k) {
-      const IType low = indptr_l[k];
-      const IType high = indptr_l[k+1];
-      if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
-      int j = -1, l = low, r = high - 1;
-      while (l <= r) {
-        int m = l + (r - l) / 2;
-        if (col_idx_l[m] == irow) {
-          j = m; break;
-        }
-        if (col_idx_l[m] < irow) {
-          l = m + 1;
-        } else {
-          r = m - 1;
-        }
-      }
-      if (j >= 0) {
-        sum += data_l[j] * data_r[k*num_cols+icol];
-      }
-    }
-    KERNEL_ASSIGN(out[i], req, sum);
-  }
-};
-
-/*!
  * \brief Implementation of dot(csr, dns) = rsp
  * dot(csr.T(), dns) = rsp
  * Must be called by DotForwardEx
@@ -758,40 +667,23 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
         NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
           NDARRAY_IDX_TYPE_SWITCH(ret->aux_type(rowsparse::kIdx), RType, {  // row idx type
             if (!lhs.storage_initialized()) return;
+            ret->CheckAndAlloc({TShape({lhs.shape()[trans_lhs? 1 : 0]})});
+            const TBlob data_out = ret->data();
             if (trans_lhs) {
-              // TODO(junwu): When performing dot(csr.T(), dns) to get a rsp matrix,
-              // we first allocate a dns tblob as a temporary placeholder for the output.
-              // Then we cast the dns to a rsp matrix. We take this approach
-              // instead of generating a rsp output with the actual storage size
-              // because it's difficult to calculate the number of non-zero columns
-              // of the csr for allocating the memory of the output rsp.
-              // We will revisit this approach in the future to see if there are
-              // better ways.
-
-              // get temporary space as an intermediate result of dot(csr.T(), dns).
-              // requested[0] is temp space resource
-              mshadow::Tensor<xpu, 2, DType> out_tmp =
-                ctx.requested[0].get_space_typed<xpu, 2, DType>(
-                    mshadow::Shape2(ret->shape()[0], ret->shape()[1]), s);
-              // generate a temporary dns output
               mxnet_op::Kernel<DotCsrDnsDns<true, false, ReqType>, xpu>::Launch(
-                  s, out_tmp.shape_.Size(), out_tmp.dptr_, data_l.dptr<DType>(),
+                  s, data_out.shape_.Size(), data_out.dptr<DType>(), data_l.dptr<DType>(),
                   indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(), data_r.dptr<DType>(),
-                  lhs.shape()[0], out_tmp.shape_[1]);
-              // cast dns to rsp
-              CastStorageDnsRspImpl<xpu>(s, TBlob(out_tmp), ret);
+                  lhs.shape()[0], data_out.shape_[1]);
             } else {
-              ret->CheckAndAlloc({TShape({lhs.shape()[0]})});
-              const TBlob data_out = ret->data();
               mxnet_op::Kernel<DotCsrDnsDns<false, false, ReqType>, xpu>::Launch(
                   s, data_out.Size(), data_out.dptr<DType>(), data_l.dptr<DType>(),
                   indptr_l.dptr<IType>(), col_idx_l.dptr<CType>(),
                   data_r.dptr<DType>(), data_out.shape_[1]);
-              const TBlob row_idx_out = ret->aux_data(rowsparse::kIdx);
-              mxnet_op::Kernel<MarkRspRowIdx, xpu>::Launch(
-                  s, row_idx_out.Size(), row_idx_out.dptr<RType>(), data_out.dptr<DType>(),
-                  data_out.shape_[0], data_out.shape_[1]);
             }
+            const TBlob row_idx_out = ret->aux_data(rowsparse::kIdx);
+            mxnet_op::Kernel<MarkRspRowIdx, xpu>::Launch(
+                s, row_idx_out.Size(), row_idx_out.dptr<RType>(), data_out.dptr<DType>(),
+                data_out.shape_[0], data_out.shape_[1]);
           });
         });
       });

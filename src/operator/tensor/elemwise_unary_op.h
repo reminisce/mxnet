@@ -255,6 +255,8 @@ struct MarkRspRowIdx {
     }
     if (num_cols == j) {
       row_idx[i] = num_rows;  // mark zero row as invalid
+    } else {
+      row_idx[i] = i;
     }
   }
 };
@@ -274,6 +276,7 @@ struct CopyDnsToRsp{
     if (num_cols == j) {
       row_idx[i] = num_rows;
     } else {
+      row_idx[i] = i;
       for (j = 0; j < num_cols; ++j) {
         rsp_data[offset+j] = dns_data[offset+j];
       }

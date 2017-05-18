@@ -31,7 +31,7 @@ def test_elemwise_add_ex():
     check_elemwise_add_ex('default_storage', 'row_sparse', shape)
     check_elemwise_add_ex('row_sparse', 'default_storage', shape)
     check_elemwise_add_ex('row_sparse', 'row_sparse', shape,
-                       lhs_grad_stype='row_sparse', rhs_grad_stype='row_sparse')
+                          lhs_grad_stype='row_sparse', rhs_grad_stype='row_sparse')
 
 # TODO(haibin) randomize this test
 def test_elemwise_add_ex_multiple_stages():
@@ -118,9 +118,7 @@ def test_sparse_dot():
         out_np = rsp_expected.asnumpy()
         backward_trans = not trans_csr
         rhs_backward_grad = mx.nd.dot(dns1, rsp_expected, transpose_a=backward_trans).asnumpy()
-        # TODO(junwu): may need to compare rsp_out and rsp_expected in rsp format
-        # instead of converting them to the dense format
-        assert same(rsp_out.asnumpy(), out_np)
+        assert_almost_equal(rsp_out.asnumpy(), out_np, rtol=1e-4, atol=1e-5)
 
         # test symbolic forward
         lhs = mx.symbol.Variable('lhs', storage_type='csr')
@@ -135,11 +133,12 @@ def test_sparse_dot():
         location = {'lhs':csr, 'rhs':dns2, 'zero':mx.nd.zeros(rsp_expected.shape)}
         expected = {'rhs':rhs_backward_grad, 'zero':out_np}
         # dot(lhs, rhs) + zeros
-        check_symbolic_forward(test, location, [rsp_expected.asnumpy()])
+        check_symbolic_forward(test, location, [rsp_expected.asnumpy()], rtol=1e-3, atol=1e-4)
         check_symbolic_backward(test, location, [out_np], expected,
-                                grad_req={'lhs': 'null', 'rhs': 'write', 'zero' : 'write'})
+                                grad_req={'lhs': 'null', 'rhs': 'write', 'zero' : 'write'},
+                                rtol=1e-3, atol=1e-4)
 
-    lhs_shape = (rnd.randint(1, 10),rnd.randint(1, 10))
+    lhs_shape = (rnd.randint(1, 10), rnd.randint(1, 10))
     test_dot_csr_dns_rsp(lhs_shape, (lhs_shape[1], rnd.randint(1, 10)), 'row_sparse', False)
     test_dot_csr_dns_rsp(lhs_shape, (lhs_shape[0], rnd.randint(1, 10)), 'row_sparse', True)
     test_dot_csr_dns_rsp(lhs_shape, (lhs_shape[1], rnd.randint(1, 10)), 'default_storage', False)
