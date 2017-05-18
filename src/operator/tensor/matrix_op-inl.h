@@ -324,6 +324,7 @@ inline bool ExpandDimShape(const nnvm::NodeAttrs& attrs,
 struct DotParam : public dmlc::Parameter<DotParam> {
   bool transpose_a;
   bool transpose_b;
+  int out_stype;  // output storage type
   DMLC_DECLARE_PARAMETER(DotParam) {
     DMLC_DECLARE_FIELD(transpose_a)
       .describe("If true then transpose the first input before dot.")
@@ -331,6 +332,12 @@ struct DotParam : public dmlc::Parameter<DotParam> {
     DMLC_DECLARE_FIELD(transpose_b)
       .describe("If true then transpose the second input before dot.")
       .set_default(false);
+    DMLC_DECLARE_FIELD(out_stype)
+      .add_enum("default_storage", kDefaultStorage)
+      .add_enum("csr", kCSRStorage)
+      .add_enum("row_sparse", kRowSparseStorage)
+      .set_default(kDefaultStorage)
+      .describe("User defined output storage type.");
   }
 };
 
@@ -483,13 +490,10 @@ inline bool DotForwardInferStorageType(const nnvm::NodeAttrs& attrs,
                                        std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 2U);
   CHECK_EQ(out_attrs->size(), 1U);
-  // dot(csr, dns) = rsp is a requirement from users
-  if (kCSRStorage == in_attrs->at(0) && kDefaultStorage == in_attrs->at(1)) {
-    // dot(csr, dns) = rsp
-    out_attrs->at(0) = kRowSparseStorage;
-  } else {  // fallback
-    return ElemwiseStorageType<2, 1>(attrs, in_attrs, out_attrs);
-  }
+  CHECK_NE(in_attrs->at(0), kUndefinedStorage);
+  CHECK_NE(in_attrs->at(1), kUndefinedStorage);
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+  out_attrs->at(0) = param.out_stype;
   return true;
 }
 
@@ -691,33 +695,6 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
   });
 }
 
-template<typename xpu>
-void DotForwardEx(const nnvm::NodeAttrs& attrs,
-                  const OpContext& ctx,
-                  const std::vector<NDArray>& inputs,
-                  const std::vector<OpReqType>& req,
-                  const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 2U);
-  CHECK_EQ(outputs.size(), 1U);
-  CHECK_EQ(req.size(), 1U);
-  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
-  CHECK(!param.transpose_b) << "tranposing rhs of the op dot is not supported";
-
-  NDArray ret = outputs[0];  // get rid of the const qualifier
-  if (inputs[0].storage_type() == kCSRStorage
-      && inputs[1].storage_type() == kDefaultStorage
-      && outputs[0].storage_type() == kDefaultStorage) {
-    DotCsrDnsDnsImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
-  } else if (inputs[0].storage_type() == kCSRStorage
-      && inputs[1].storage_type() == kDefaultStorage
-      && outputs[0].storage_type() == kRowSparseStorage) {
-    DotCsrDnsRspImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
-  } else {
-    // TODO(junwu): add fallback mechanism
-    LOG(FATAL) << "Not supported";
-  }
-}
-
 /*!
  * \brief Backward of
  * 1. out = dot(csr, dns)
@@ -751,40 +728,6 @@ void DotBackwardCsrDnsDns(const nnvm::NodeAttrs& attrs,
   const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
   NDArray ret = outputs[1];
   DotCsrDnsDnsImpl<xpu>(ctx, inputs[1], inputs[0], req[1], !param.transpose_a, &ret);
-}
-
-template<typename xpu>
-void DotBackwardEx(const nnvm::NodeAttrs& attrs,
-                   const OpContext& ctx,
-                   const std::vector<NDArray>& inputs,
-                   const std::vector<OpReqType>& req,
-                   const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 3U);
-  CHECK_EQ(outputs.size(), 2U);
-  CHECK_EQ(req.size(), 2U);
-  CHECK_EQ(kNullOp, req[0])
-    << "sparse dot does not support computing the gradient of the csr/lhs";
-  CHECK_NE(req[1], kWriteInplace) << "DotBackwardCsrDnsRsp does not support WriteInplace";
-
-  // TODO(junwu): check whether this CHECK is reasonable
-  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
-  CHECK(!param.transpose_b) << "sparse dot only supports dot(A, X) and dot(A.T(), X)";
-  if (inputs[0].storage_type() == kDefaultStorage  // ograd dns format
-      // dns, csr, dns => *, rsp
-      && inputs[1].storage_type() == kCSRStorage  // csr input lhs of the op
-      && inputs[2].storage_type() == kDefaultStorage  // dns input rhs of the op
-      && outputs[1].storage_type() == kRowSparseStorage) {  // grad(rhs) rsp format
-    DotBackwardCsrDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
-  } else if (inputs[0].storage_type() == kDefaultStorage  // ograd dns format
-      // dns, csr, dns => *, dns
-      && inputs[1].storage_type() == kCSRStorage  // csr input lhs of the op
-      && inputs[2].storage_type() == kDefaultStorage  // dns input rhs of the op
-      && outputs[1].storage_type() == kDefaultStorage) {  // grad(rhs) dns format
-    DotBackwardCsrDnsDns<xpu>(attrs, ctx, inputs, req, outputs);
-  } else {
-    // TODO(junwu): add fallback mechanism
-    LOG(FATAL) << "Not supported";
-  }
 }
 
 inline bool DotShape(const nnvm::NodeAttrs& attrs,
@@ -828,6 +771,95 @@ inline bool DotShape(const nnvm::NodeAttrs& attrs,
     SHAPE_ASSIGN_CHECK(*out_attrs, 0, oshape);
   }
   return true;
+}
+
+template<typename xpu>
+void DotForwardEx(const nnvm::NodeAttrs& attrs,
+                  const OpContext& ctx,
+                  const std::vector<NDArray>& inputs,
+                  const std::vector<OpReqType>& req,
+                  const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 1U);
+  CHECK_EQ(req.size(), 1U);
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+  CHECK(!param.transpose_b) << "tranposing rhs of the op dot is not supported";
+
+  NDArray ret = outputs[0];  // get rid of the const qualifier
+  if (inputs[0].storage_type() == kCSRStorage
+      && inputs[1].storage_type() == kDefaultStorage
+      && outputs[0].storage_type() == kDefaultStorage) {
+    DotCsrDnsDnsImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
+  } else if (inputs[0].storage_type() == kCSRStorage
+      && inputs[1].storage_type() == kDefaultStorage
+      && outputs[0].storage_type() == kRowSparseStorage) {
+    DotCsrDnsRspImpl<xpu>(ctx, inputs[0], inputs[1], req[0], param.transpose_a, &ret);
+  } else if (outputs[0].storage_type() == kDefaultStorage) {  // fallback
+    auto s = ctx.get_stream<xpu>();
+    TBlob lhs_data = inputs[0].data();
+    if (inputs[0].storage_type() != kDefaultStorage) {
+      CastStorageToDefault<xpu>(s, inputs[0], &lhs_data);
+    }
+    TBlob rhs_data = inputs[1].data();
+    if (inputs[1].storage_type() != kDefaultStorage) {
+      CastStorageToDefault<xpu>(s, inputs[1], &rhs_data);
+    }
+    DotForward_<xpu>(attrs, ctx, {lhs_data, rhs_data}, req, {outputs[0].data()});
+  } else {  // output storage_type cannot be sparse
+    LOG(FATAL) << "Not supported dot operation for lhs.storage_type = "
+      << inputs[0].storage_type() << ", rhs.storage_type = " << inputs[1].storage_type()
+      << ", out.storage_type = " << outputs[0].storage_type();
+  }
+}
+
+template<typename xpu>
+void DotBackwardEx(const nnvm::NodeAttrs& attrs,
+                   const OpContext& ctx,
+                   const std::vector<NDArray>& inputs,
+                   const std::vector<OpReqType>& req,
+                   const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 3U);
+  CHECK_EQ(outputs.size(), 2U);
+  CHECK_EQ(req.size(), 2U);
+  CHECK_EQ(kNullOp, req[0])
+    << "sparse dot does not support computing the gradient of the csr/lhs";
+  CHECK_NE(req[1], kWriteInplace) << "DotBackwardCsrDnsRsp does not support WriteInplace";
+
+  // TODO(junwu): check whether this CHECK is reasonable
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+  CHECK(!param.transpose_b) << "sparse dot only supports dot(A, X) and dot(A.T(), X)";
+  if (inputs[0].storage_type() == kDefaultStorage  // ograd dns format
+      // dns, csr, dns => *, rsp
+      && inputs[1].storage_type() == kCSRStorage  // csr input lhs of the op
+      && inputs[2].storage_type() == kDefaultStorage  // dns input rhs of the op
+      && outputs[1].storage_type() == kRowSparseStorage) {  // grad(rhs) rsp format
+    DotBackwardCsrDnsRsp<xpu>(attrs, ctx, inputs, req, outputs);
+  } else if (inputs[0].storage_type() == kDefaultStorage  // ograd dns format
+      // dns, csr, dns => *, dns
+      && inputs[1].storage_type() == kCSRStorage  // csr input lhs of the op
+      && inputs[2].storage_type() == kDefaultStorage  // dns input rhs of the op
+      && outputs[1].storage_type() == kDefaultStorage) {  // grad(rhs) dns format
+    DotBackwardCsrDnsDns<xpu>(attrs, ctx, inputs, req, outputs);
+  } else if (outputs[0].storage_type() == kDefaultStorage
+      && outputs[1].storage_type() == kDefaultStorage) {
+    auto s = ctx.get_stream<xpu>();
+    TBlob ograd_data = inputs[0].data();
+    if (inputs[0].storage_type() != kDefaultStorage) {
+      CastStorageToDefault<xpu>(s, inputs[0], & ograd_data);
+    }
+    TBlob lhs_data = inputs[1].data();
+    if (inputs[1].storage_type() != kDefaultStorage) {
+      CastStorageToDefault<xpu>(s, inputs[1], &lhs_data);
+    }
+    TBlob rhs_data = inputs[2].data();
+    if (inputs[2].storage_type() != kDefaultStorage) {
+      CastStorageToDefault<xpu>(s, inputs[2], &rhs_data);
+    }
+    DotBackward_<xpu>(attrs, ctx, {ograd_data, lhs_data, rhs_data},
+        req, {outputs[0].data(), outputs[1].data()});
+  } else {
+    LOG(FATAL) << "Not supported dot backward for sparse input(s) with sparse gradients";
+  }
 }
 
 template<typename xpu>

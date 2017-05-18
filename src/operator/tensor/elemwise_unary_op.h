@@ -245,7 +245,7 @@ struct MarkRspRowIdx {
   // i represents the row index of the matrix data
   template<typename DType, typename RType>
   MSHADOW_XINLINE static void Map(int i, RType* row_idx, const DType* data,
-                                  const int num_rows, const int num_cols) {
+                                  const int invalid_rid, const int num_cols) {
     int j = 0;
     int offset = i * num_cols;
     for (; j < num_cols; ++j) {
@@ -254,7 +254,7 @@ struct MarkRspRowIdx {
       }
     }
     if (num_cols == j) {
-      row_idx[i] = num_rows;  // mark zero row as invalid
+      row_idx[i] = invalid_rid;  // mark zero row as invalid
     } else {
       row_idx[i] = i;
     }
@@ -541,8 +541,8 @@ inline bool CastStorageInferStorageType(const nnvm::NodeAttrs& attrs,
 
 template<typename xpu>
 void CastStorageComputeImpl(mshadow::Stream<xpu> *s,
-                          const NDArray& input,
-                          const NDArray& output) {
+                            const NDArray& input,
+                            const NDArray& output) {
   using namespace mshadow;
   using namespace mshadow::expr;
   const auto src_stype = input.storage_type();
@@ -563,6 +563,23 @@ void CastStorageComputeImpl(mshadow::Stream<xpu> *s,
     LOG(FATAL) << "Not implemented";
   }
 }
+
+template<typename xpu>
+void CastStorageToDefault(mshadow::Stream<xpu> *s,
+                          const NDArray& input,
+                          TBlob* ret) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  const auto src_stype = input.storage_type();
+  if (src_stype == kRowSparseStorage) {
+    CastStorageRspDnsImpl<xpu>(s, input, ret);
+  } else if (src_stype == kCSRStorage) {
+    CastStorageCsrDnsImpl<xpu>(s, input, ret);
+  } else {
+    LOG(FATAL) << "Not implemented";
+  }
+}
+
 template<typename xpu>
 void CastStorageComputeEx(const nnvm::NodeAttrs& attrs,
                           const OpContext& ctx,
