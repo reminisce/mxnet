@@ -11,12 +11,6 @@
 namespace mxnet {
 namespace op {
 
-struct CastStruct {
-  MSHADOW_XINLINE static void Map(int i, int32_t *out, const float *in) {
-    out[i] = static_cast<int32_t>(in[i]);
-  }
-};
-
 // value + bias_value * (range1 / limit_range1) * (limit_range2 / range2)
 struct QuantizedBiasAddStruct {
   MSHADOW_XINLINE static void Map(int i, size_t k, int32_t *out,
@@ -30,6 +24,23 @@ struct QuantizedBiasAddStruct {
     float float_for_one_bias_quant = (max_bias[0] - min_bias[0]) /
         (static_cast<double>(MaxValue<T2>()) -
          static_cast<double>(MinValue<T2>()));
+    out[i] = (out[i] * float_for_one_out_quant +
+              bias[i%k] * float_for_one_bias_quant) /
+             float_for_one_out_quant;
+  }
+};
+
+// value + bias_value * (range1 / limit_range1) * (limit_range2 / range2)
+struct QuantizedBiasAddStruct2 {
+  MSHADOW_XINLINE static void Map(int i, size_t k, int32_t *out,
+    const int8_t *bias, const float *min_out, const float *max_out,
+    const float *min_bias, const float *max_bias) {
+    typedef int32_t T1;
+    typedef int8_t  T2;
+    float float_for_one_out_quant  =
+      *max_out / static_cast<double>(MaxValue<T1>());
+    float float_for_one_bias_quant =
+      *max_bias / static_cast<double>(MaxValue<T2>());
     out[i] = (out[i] * float_for_one_out_quant +
               bias[i%k] * float_for_one_bias_quant) /
              float_for_one_out_quant;
@@ -103,10 +114,13 @@ class QuantizedFullyConnectedCublasOp : public Operator {
        in_data[num_inputs].dptr<float>(),   in_data[num_inputs+1].dptr<float>(),
        in_data[num_inputs+2].dptr<float>(), in_data[num_inputs+3].dptr<float>());
 
-    // Kernel<QuantizedBiasAddStruct, gpu>::Launch(s, out.Size(),
-    //     k, out.dptr<int32_t>(), bias.dptr<int8_t>(),
-    //     out_data[1].dptr<float>(), out_data[2].dptr<float>(),
-    //      in_data[7].dptr<float>(),  in_data[8].dptr<float>());
+    if (!param_.no_bias) {
+      const TBlob& bias = in_data[2];
+      Kernel<QuantizedBiasAddStruct2, gpu>::Launch(s, out.Size(),
+          k, out.dptr<int32_t>(), bias.dptr<int8_t>(),
+          out_data[1].dptr<float>(), out_data[2].dptr<float>(),
+           in_data[7].dptr<float>(),  in_data[8].dptr<float>());
+    }
   }
 
   virtual void Backward(const OpContext &ctx,

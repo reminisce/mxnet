@@ -16,55 +16,60 @@ using mshadow::red::limits::MinValue;
 using mshadow::red::limits::MaxValue;
 
 template<typename T>
+MSHADOW_XINLINE T Max(T a, T b) {
+#ifdef __CUDACC__
+  return ::max(a, b);
+#else
+  return std::max(a, b);
+#endif
+}
+
+template<typename T>
+MSHADOW_XINLINE T Min(T a, T b) {
+#ifdef __CUDACC__
+  return ::min(a, b);
+#else
+  return std::min(a, b);
+#endif
+}
+
+template<typename T>
+MSHADOW_XINLINE float MaxAbs(T a, T b) {
+  using namespace std;
+  return max(abs(static_cast<float>(a)), abs(static_cast<float>(b)));
+}
+
+template<typename T>
 MSHADOW_XINLINE int64_t FloatToQuantizedUnclamped(
     float input, float min_range, float max_range) {
-  const int64_t lowest_quantized = static_cast<double>(MinValue<T>());
-  if (min_range == max_range) return lowest_quantized;
-  const int num_of_bits = sizeof(T) * 8;
-  const int64_t num_of_steps = static_cast<int64_t>(1) << num_of_bits;
-  const double range_adjust = (num_of_steps / (num_of_steps - 1.0));
-  const double range = ((max_range - min_range) * range_adjust);
-  const double range_scale = (num_of_steps / range);
-  int64_t quantized =
-    (round(input * range_scale) - round(min_range * range_scale));
-  quantized += lowest_quantized;
-  return quantized;
+  const float float_range    = MaxAbs(min_range, max_range);
+  const float quantize_range = static_cast<float>(MaxValue<T>());
+  return static_cast<int64_t>((input / float_range * quantize_range) + 0.5);
 }
 
 template<typename T>
 MSHADOW_XINLINE T FloatToQuantized(
     float input, float min_range, float max_range) {
   int64_t quantized = FloatToQuantizedUnclamped<T>(input, min_range, max_range);
-  const int64_t lowest_quantized  = static_cast<double>(MinValue<T>());
-  const int64_t highest_quantized = static_cast<double>(MaxValue<T>());
-  quantized = std::max(quantized, lowest_quantized);
-  quantized = std::min(quantized, highest_quantized);
-  return static_cast<T>(static_cast<int32_t>(quantized));
+  const int64_t highest_quantized = static_cast<int64_t>(MaxValue<T>());
+  const int64_t lowest_quantized  = -highest_quantized;
+  quantized = Max(quantized, lowest_quantized);
+  quantized = Min(quantized, highest_quantized);
+  return static_cast<T>(quantized);
 }
 
 template <typename T>
-MSHADOW_XINLINE float QuantizedToFloat(
-    float input, float range_min, float range_max) {
-  if (range_min == range_max) {
-    return range_min;
-  }
-  const int number_of_bits = sizeof(T) * 8;
-  const int64_t number_of_steps = static_cast<int64_t>(1) << number_of_bits;
-  const double range_adjust = (number_of_steps / (number_of_steps - 1.0));
-  const double range = ((range_max - range_min) * range_adjust);
-  const double range_scale = (range / number_of_steps);
-  const int64_t lowest_quantized =
-      static_cast<int64_t>(MinValue<T>());
-  const double offset_input = static_cast<double>(input) - lowest_quantized;
-  // For compatibility with DEQUANTIZE_WITH_EIGEN, we should convert
-  // range_scale to a float, otherwise range_min_rounded might be slighly
-  // different.
-  const double range_min_rounded =
-      round(range_min / static_cast<float>(range_scale)) *
-      static_cast<float>(range_scale);
-  const double result = range_min_rounded + (offset_input * range_scale);
-  return static_cast<float>(result);
+MSHADOW_XINLINE float QuantizedToFloat(T input, float range_min, float range_max) {
+  return static_cast<float>(input) * range_max / static_cast<float>(MaxValue<T>());
 }
+
+struct QuantizedToFloatStruct {
+  template<typename T>
+  MSHADOW_XINLINE static void Map(int i, float *output, const T *input,
+      const float *range_min, const float *range_max) {
+    output[i] = QuantizedToFloat(input[i], range_min[0], range_max[0]);
+  }
+};
 
 template <class T1, class T2>
 MSHADOW_XINLINE T2 RequantizeInNewRange(T1 input, float min_input, float max_input,
@@ -78,12 +83,24 @@ MSHADOW_XINLINE void RequantizeManyInNewRange(size_t count,
 	T2* output, const T1 *input, float input_min,
 	float input_max, float actual_min, float actual_max) {
 
-  for (size_t index = 0; index < count; ++index) {
+  for (size_t i = 0; i < count; ++i) {
     const float input_float =
-        QuantizedToFloat<T1>(input[index], input_min, input_max);
-    output[index] = FloatToQuantized<T2>(input_float, actual_min, actual_max);
+        QuantizedToFloat<T1>(input[i], input_min, input_max);
+    output[i] = FloatToQuantized<T2>(input_float, actual_min, actual_max);
   }
 }
+
+struct RequantizeManyInNewRangeStruct {
+  template<typename T1, typename T2>
+  MSHADOW_XINLINE static void Map(int i, T2 *output, const T1 *input,
+      const float *input_min, const float *input_max,
+      const float *actual_min, const float *actual_max) {
+    const float input_float =
+        QuantizedToFloat<T1>(input[i], input_min[0], input_max[0]);
+    output[i] = FloatToQuantized<T2>(input_float, actual_min[0], actual_max[0]);
+  }
+};
+
 
 /*
 

@@ -15,6 +15,9 @@ NNVM_REGISTER_OP(quantize_down_and_shrink_range)
 .set_num_outputs(3)
 .set_attr<nnvm::FInferShape>("FInferShape", QuantizeDownAndShrinkRangeShape)
 .set_attr<nnvm::FInferType>("FInferType", QuantizeDownAndShrinkRangeType)
+.set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& attrs) {
+    return std::vector<ResourceRequest>({ResourceRequest::kTempSpace});
+  })
 .add_argument("input", "NDArray-or-Symbol", "A ndarray/symbol of type `float32`")
 .add_argument("min_range", "NDArray-or-Symbol", "The minimum scalar value "
   "possibly produced for the input")

@@ -30,6 +30,7 @@
 #include "../elemwise_op_common.h"
 #include "../mshadow_op.h"
 #include "../mxnet_op.h"
+#include "./quantization_utils.h"
 
 namespace mxnet {
 namespace op {
@@ -60,11 +61,6 @@ struct quantize {
   }
 };
 
-template<typename T>
-MSHADOW_XINLINE float MaxAbs(T a, T b) {
-  using namespace std;
-  return max(abs(static_cast<float>(a)), abs(static_cast<float>(b)));
-}
 
 // keep zero-center
 struct quantize_v2 {
@@ -76,7 +72,8 @@ struct quantize_v2 {
     using mshadow::red::limits::MaxValue;
     float range = MaxAbs(*imax_range, *imin_range);
     float scale = MaxAbs(MaxValue<DstDType>(), MinValue<DstDType>()) / range;
-    out[i] = static_cast<DstDType>(in[i] * scale + 0.5);
+    out[i] = static_cast<DstDType>(
+        Min(in[i] * scale + 0.5, static_cast<double>(MaxValue<DstDType>())));
     *omin_range = -range;
     *omax_range =  range;
   }

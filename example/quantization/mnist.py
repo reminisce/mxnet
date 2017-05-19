@@ -7,14 +7,16 @@ from mxnet.quantization import *
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+no_bias = True
+batch_size = 32
+
 data = mx.symbol.Variable('data')
-fc1  = mx.symbol.FullyConnected(data = data, name='fc1', num_hidden=32, no_bias=True)
-# act1 = mx.symbol.relu(data = fc1)
-# fc2  = mx.symbol.FullyConnected(data = act1, name = 'fc2', num_hidden = 64)
-# act2 = mx.symbol.relu(data = fc2)
-# fc3  = mx.symbol.FullyConnected(data = act2, name='fc3', num_hidden=10)
-# mlp  = mx.symbol.SoftmaxOutput(data = fc3, name = 'softmax')
-mlp  = mx.symbol.SoftmaxOutput(data = fc1, name = 'softmax')
+fc1  = mx.symbol.FullyConnected(data = data, name='fc1', num_hidden=32, no_bias=no_bias)
+act1 = mx.symbol.relu(data = fc1, name='act1')
+fc2  = mx.symbol.FullyConnected(data = act1, name = 'fc2', num_hidden = 64, no_bias=no_bias)
+act2 = mx.symbol.relu(data = fc2)
+fc3  = mx.symbol.FullyConnected(data = act2, name='fc3', num_hidden=10, no_bias=no_bias)
+mlp  = mx.symbol.SoftmaxOutput(data = fc3, name = 'softmax')
 
 print(mlp.list_arguments())
 
@@ -32,7 +34,6 @@ X_test = X[60000:]
 Y_train = Y[:60000]
 Y_test = Y[60000:]
 
-batch_size = 100
 train_iter = mx.io.NDArrayIter(X_train, Y_train, batch_size=batch_size)
 test_iter = mx.io.NDArrayIter(X_test, Y_test, batch_size=batch_size)
 
@@ -56,8 +57,6 @@ print 'Accuracy:', model.score(test_iter)*100, '%'
 
 quantized_mlp = quantize_graph(mlp)
 print(quantized_mlp.debug_str())
-
-
 params = model.arg_params
 
 def test(symbol):
@@ -67,20 +66,36 @@ def test(symbol):
         arg_params=params)
     print 'Accuracy:', model.score(test_iter)*100, '%'
 
+print('origin:')
 test(mlp)
+print('after quantization:')
 test(quantized_mlp)
 
 ctx = mx.gpu(0)
 data   = test_iter.data[0][1][:32].copyto(ctx)
+label  = test_iter.label[0][1][:32].copyto(ctx)
 weight = params['fc1_weight'].copyto(ctx)
 
-min0d  = nd.min(data)
-max0d  = nd.max(data)
-qdata, min1d, max1d   = mx.contrib.nd.quantize(data, min0d, max0d)
-min0w  = nd.min(weight)
-max0w  = nd.max(weight)
-qweight, min1w, max1w = mx.contrib.nd.quantize(weight, min0w, max0w)
-qfc1, min2, max2  = nd.quantized_fully_connected(qdata, qweight,
-	min1d, max1d, min1w, max1w, num_hidden=32, no_bias=True)
-qfc1_, min3, max3 = nd.quantize_down_and_shrink_range(qfc1, min2, max2)
 
+# fc1_nd  = nd.FullyConnected(data, weight, num_hidden=10, no_bias=True)
+# pred_nd = nd.SoftmaxActivation(fc1_nd)
+#
+# min0d  = nd.min(data)
+# max0d  = nd.max(data)
+# qdata, min1d, max1d   = mx.contrib.nd.quantize(data, min0d, max0d)
+# min0w  = nd.min(weight)
+# max0w  = nd.max(weight)
+# qweight, min1w, max1w = mx.contrib.nd.quantize(weight, min0w, max0w)
+# qfc1, min2, max2  = nd.quantized_fully_connected(qdata, qweight,
+# 	min1d, max1d, min1w, max1w, num_hidden=10, no_bias=True)
+# qfc1_, min3, max3 = nd.quantize_down_and_shrink_range(qfc1, min2, max2)
+# qfc1_f = nd.cast(qfc1, dtype='float32')
+# qpred = nd.SoftmaxActivation(qfc1_f)
+#
+# for i in range(batch_size):
+#     pred_idx  = nd.argmax(pred_nd[i], axis=0).asnumpy()[0]
+#     qpred_idx = nd.argmax(qpred[i], axis=0).asnumpy()[0]
+#     if pred_idx != qpred_idx:
+# 	print('i: {}, pred_idx: {}, qpred_idx: {}'.format(i, pred_idx, qpred_idx))
+#
+# # 8, 10
