@@ -622,8 +622,8 @@ void DotCsrDnsDnsImpl(const OpContext& ctx,
 
   MXNET_ASSIGN_REQ_SWITCH(req, ReqType, {
     MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
-      NDARRAY_IDX_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
-        NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
+      MSHADOW_INT_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
+        MSHADOW_INT_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
           if (!lhs.storage_initialized()) return;
           if (trans_lhs) {
             mxnet_op::Kernel<DotCsrDnsDns<true, false, ReqType>, xpu>::Launch(s, data_out.Size(),
@@ -667,9 +667,9 @@ void DotCsrDnsRspImpl(const OpContext& ctx,
 
   MXNET_ASSIGN_REQ_SWITCH(req, ReqType, {
     MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
-      NDARRAY_IDX_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
-        NDARRAY_IDX_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
-          NDARRAY_IDX_TYPE_SWITCH(ret->aux_type(rowsparse::kIdx), RType, {  // row idx type
+      MSHADOW_INT_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
+        MSHADOW_INT_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
+          MSHADOW_INT_TYPE_SWITCH(ret->aux_type(rowsparse::kIdx), RType, {  // row idx type
             if (!lhs.storage_initialized()) return;
             ret->CheckAndAlloc({TShape({lhs.shape()[trans_lhs? 1 : 0]})});
             const TBlob data_out = ret->data();

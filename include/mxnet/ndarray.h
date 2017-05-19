@@ -1201,24 +1201,6 @@ struct NDArrayFunctionReg
 #define MXNET_REGISTER_NDARRAY_FUN(name)                                 \
   DMLC_REGISTRY_REGISTER(::mxnet::NDArrayFunctionReg, NDArrayFunctionReg, name)
 
-#define NDARRAY_IDX_TYPE_SWITCH(type, DType, ...)   \
-  switch (type) {                                   \
-  case mshadow::kUint8:                             \
-    {                                               \
-      typedef uint8_t DType;                        \
-      {__VA_ARGS__}                                 \
-    }                                               \
-    break;                                          \
-  case mshadow::kInt32:                             \
-    {                                               \
-      typedef int32_t DType;                        \
-      {__VA_ARGS__}                                 \
-    }                                               \
-    break;                                          \
-  default:                                          \
-    LOG(FATAL) << "Unknown idx type enum " << type; \
-  }
-
 }  // namespace mxnet
 
 namespace dmlc {
