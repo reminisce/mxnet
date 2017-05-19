@@ -19,10 +19,10 @@ namespace mxnet {
 namespace op {
 template<typename xpu, typename op>
 void UnaryLaunch(const nnvm::NodeAttrs& attrs,
-                        const OpContext& ctx,
-                        const std::vector<TBlob>& inputs,
-                        const std::vector<OpReqType>& req,
-                        const std::vector<TBlob>& outputs) {
+                 const OpContext& ctx,
+                 const std::vector<TBlob>& inputs,
+                 const std::vector<OpReqType>& req,
+                 const std::vector<TBlob>& outputs) {
   using namespace mshadow;
   using namespace mxnet_op;
   Stream<xpu> *s = ctx.get_stream<xpu>();
@@ -239,6 +239,52 @@ struct FillRspRowIdx {
 };
 
 /*!
+ * \brief Kernel for marking row_idx of a RSP matrix per row
+ */
+struct MarkRspRowIdx {
+  // i represents the row index of the matrix data
+  template<typename DType, typename RType>
+  MSHADOW_XINLINE static void Map(int i, RType* row_idx, const DType* data,
+                                  const int invalid_rid, const int num_cols) {
+    int j = 0;
+    int offset = i * num_cols;
+    for (; j < num_cols; ++j) {
+      if (data[offset+j] != 0) {
+        break;
+      }
+    }
+    if (num_cols == j) {
+      row_idx[i] = invalid_rid;  // mark zero row as invalid
+    } else {
+      row_idx[i] = i;
+    }
+  }
+};
+
+struct CopyDnsToRsp{
+  // i represents the row index of the matrix data
+  template<typename DType, typename RType>
+  MSHADOW_XINLINE static void Map(int i, RType* row_idx, DType* rsp_data,
+                                  const DType* dns_data, const int num_rows, const int num_cols) {
+    int j = 0;
+    int offset = i * num_cols;
+    for (; j < num_cols; ++j) {
+      if (dns_data[offset+j] != 0) {
+        break;
+      }
+    }
+    if (num_cols == j) {
+      row_idx[i] = num_rows;
+    } else {
+      row_idx[i] = i;
+      for (j = 0; j < num_cols; ++j) {
+        rsp_data[offset+j] = dns_data[offset+j];
+      }
+    }
+  }
+};
+
+/*!
  * \brief
  * Given a DNS storage type tensor, create a RSP type sparse tensor
  * from it. This would allocate memory for storing the row idx and
@@ -257,39 +303,14 @@ void CastStorageDnsRspImpl(mshadow::Stream<xpu> *s, const TBlob& dns, NDArray* r
   CHECK_EQ(rsp->storage_type(), kRowSparseStorage);
   CHECK_EQ(dns.shape_, rsp->shape());
 
-  rsp->CheckAndAllocAuxData(rowsparse::kIdx, mshadow::Shape1(dns.shape_[0]));
   MSHADOW_TYPE_SWITCH(dns.type_flag_, DType, {  // data type
-    NDARRAY_IDX_TYPE_SWITCH(rsp->aux_type(rowsparse::kIdx), RType, {  // row idx type
-      RType* row_idx = rsp->aux_data(rowsparse::kIdx).dptr<RType>();
+    MSHADOW_INT_TYPE_SWITCH(rsp->aux_type(rowsparse::kIdx), RType, {  // row idx type
       const index_t num_rows = dns.shape_[0];
       const index_t num_cols = dns.shape_[1];
-      // Fill input_data.shape_[0] into row_idx array
-      mxnet_op::Kernel<FillRspRowIdx, xpu>::Launch(s, num_rows, row_idx, dns.dptr<DType>(),
-          num_rows, num_cols);
-
-      // single thread scanning row_idx array to find out number of non-zero rows
-      index_t nnr = 0;  // number of non-zero rows
-      for (index_t i = 0; i < num_rows; ++i) {
-        if (row_idx[i] < static_cast<RType>(num_rows)) ++nnr;
-      }
-      if (0 == nnr) {
-        rsp->SetAuxShape(rowsparse::kIdx, TShape(mshadow::Shape1(0)));
-        return;  // zero matrix
-      }
-      rsp->CheckAndAllocData(mshadow::Shape2(nnr, num_cols));
-      // TODO(junwu): single thread for compressing row_idx and copying data
-      // from dns to rsp, might be a bottleneck.
-      auto in_tensor = dns.FlatTo2D<xpu, DType>(s);
-      auto out_tensor = rsp->data().FlatTo2D<xpu, DType>(s);
-      int last_nnr_id = -1;  // last non-zero row id
-      for (index_t i = 0; i < num_rows; ++i) {
-        if (row_idx[i] < static_cast<RType>(num_rows)) {  // non-zero row found
-          row_idx[++last_nnr_id] = row_idx[i];
-          mshadow::Copy(out_tensor[last_nnr_id], in_tensor[i], s);
-        }
-      }
-      // update effective size (not capacity) of the row_idx of rsp
-      rsp->SetAuxShape(rowsparse::kIdx, mshadow::Shape1(last_nnr_id+1));
+      rsp->CheckAndAlloc({TShape({num_rows})});
+      RType* row_idx = rsp->aux_data(rowsparse::kIdx).dptr<RType>();
+      mxnet_op::Kernel<CopyDnsToRsp, xpu>::Launch(s, num_rows, row_idx, rsp->data().dptr<DType>(),
+          dns.dptr<DType>(), num_rows, num_cols);
     });
   });
 }
@@ -310,7 +331,6 @@ struct CastStorageRspDnsKernel {
   }
 };
 
-
 /*!
  * \brief This function assumes that the meomry for dns has been allocated already
  * since the shape is known at binding stage.
@@ -321,7 +341,7 @@ void CastStorageRspDnsImpl(mshadow::Stream<xpu> *s, const NDArray& rsp, TBlob* d
   using namespace mshadow::expr;
   CHECK_EQ(rsp.storage_type(), kRowSparseStorage);
   MSHADOW_TYPE_SWITCH(dns->type_flag_, DType, {
-    NDARRAY_IDX_TYPE_SWITCH(rsp.aux_type(rowsparse::kIdx), IType, {
+    MSHADOW_INT_TYPE_SWITCH(rsp.aux_type(rowsparse::kIdx), IType, {
       // assign zeros
       mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(s, dns->Size(), dns->dptr<DType>());
       if (rsp.storage_initialized()) {
@@ -416,8 +436,8 @@ void CastStorageDnsCsrImpl(mshadow::Stream<xpu> *s, const TBlob& dns, NDArray* c
   CHECK_EQ(dns.shape_, csr->shape());
 
   MSHADOW_TYPE_SWITCH(dns.type_flag_, DType, {  // data type
-    NDARRAY_IDX_TYPE_SWITCH(csr->aux_type(csr::kIndPtr), IType, {  // indptr type
-      NDARRAY_IDX_TYPE_SWITCH(csr->aux_type(csr::kIdx), CType, {  // col idx type
+    MSHADOW_INT_TYPE_SWITCH(csr->aux_type(csr::kIndPtr), IType, {  // indptr type
+      MSHADOW_INT_TYPE_SWITCH(csr->aux_type(csr::kIdx), CType, {  // col idx type
         const index_t num_rows = dns.shape_[0];
         const index_t num_cols = dns.shape_[1];
         csr->CheckAndAllocAuxData(csr::kIndPtr, mshadow::Shape1(num_rows+1));
@@ -487,8 +507,8 @@ void CastStorageCsrDnsImpl(mshadow::Stream<xpu> *s, const NDArray& csr, TBlob* d
   CHECK_EQ(dns->shape_, csr.shape());
 
   MSHADOW_TYPE_SWITCH(dns->type_flag_, DType, {  // data type
-    NDARRAY_IDX_TYPE_SWITCH(csr.aux_type(csr::kIndPtr), IType, {  // indptr type
-      NDARRAY_IDX_TYPE_SWITCH(csr.aux_type(csr::kIdx), CType, {  // col idx type
+    MSHADOW_INT_TYPE_SWITCH(csr.aux_type(csr::kIndPtr), IType, {  // indptr type
+      MSHADOW_INT_TYPE_SWITCH(csr.aux_type(csr::kIdx), CType, {  // col idx type
         const index_t num_rows = dns->shape_[0];
         const index_t num_cols = dns->shape_[1];
         DType* dns_data = dns->dptr<DType>();
@@ -520,8 +540,8 @@ inline bool CastStorageInferStorageType(const nnvm::NodeAttrs& attrs,
 
 template<typename xpu>
 void CastStorageComputeImpl(mshadow::Stream<xpu> *s,
-                          const NDArray& input,
-                          const NDArray& output) {
+                            const NDArray& input,
+                            const NDArray& output) {
   using namespace mshadow;
   using namespace mshadow::expr;
   const auto src_stype = input.storage_type();
@@ -542,6 +562,23 @@ void CastStorageComputeImpl(mshadow::Stream<xpu> *s,
     LOG(FATAL) << "Not implemented";
   }
 }
+
+template<typename xpu>
+void CastStorageToDefault(mshadow::Stream<xpu> *s,
+                          const NDArray& input,
+                          TBlob* ret) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  const auto src_stype = input.storage_type();
+  if (src_stype == kRowSparseStorage) {
+    CastStorageRspDnsImpl<xpu>(s, input, ret);
+  } else if (src_stype == kCSRStorage) {
+    CastStorageCsrDnsImpl<xpu>(s, input, ret);
+  } else {
+    LOG(FATAL) << "Not implemented";
+  }
+}
+
 template<typename xpu>
 void CastStorageComputeEx(const nnvm::NodeAttrs& attrs,
                           const OpContext& ctx,

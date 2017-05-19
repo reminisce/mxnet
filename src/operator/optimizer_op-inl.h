@@ -129,7 +129,7 @@ inline void SparseSGDUpdateDnsRspImpl(const SGDParam& param,
   if (!grad.storage_initialized()) return;
 
   MSHADOW_REAL_TYPE_SWITCH(weight.dtype(), DType, {
-    NDARRAY_IDX_TYPE_SWITCH(grad.aux_type(rowsparse::kIdx), IType, {
+    MSHADOW_INT_TYPE_SWITCH(grad.aux_type(rowsparse::kIdx), IType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], req_type, {
         auto weight_data = weight.data().FlatTo2D<xpu, DType>(s);
         auto grad_idx = grad.aux_data(rowsparse::kIdx).FlatTo1D<xpu, IType>(s);
@@ -276,7 +276,7 @@ inline void SparseSGDMomUpdateDnsRspDnsImpl(const SGDMomParam& param,
   if (!grad.storage_initialized()) return;
 
   MSHADOW_REAL_TYPE_SWITCH(weight.dtype(), DType, {
-    NDARRAY_IDX_TYPE_SWITCH(grad.aux_type(rowsparse::kIdx), IType, {
+    MSHADOW_INT_TYPE_SWITCH(grad.aux_type(rowsparse::kIdx), IType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], req_type, {
         auto weight_data = weight.data().FlatTo2D<xpu, DType>(s);
         auto grad_idx = grad.aux_data(rowsparse::kIdx).FlatTo1D<xpu, IType>(s);
