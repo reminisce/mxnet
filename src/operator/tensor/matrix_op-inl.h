@@ -1163,7 +1163,7 @@ void SliceCsrImpl(const SliceParam &param, const OpContext& ctx,
   CHECK_EQ(in.aux_type(kIndPtr), in.aux_type(kIdx))
            << "The type for indptr and indices are different. This is not implemented yet.";
   // assume idx indptr share the same type
-  NDARRAY_IDX_TYPE_SWITCH(in.aux_type(kIndPtr), IType, {
+  MSHADOW_INT_TYPE_SWITCH(in.aux_type(kIndPtr), IType, {
     MSHADOW_TYPE_SWITCH(in.dtype(), DType, {
       auto in_indptr = in.aux_data(kIndPtr).dptr<IType>();
       auto out_indptr = out.aux_data(kIndPtr).dptr<IType>();
