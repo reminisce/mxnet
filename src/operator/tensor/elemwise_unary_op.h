@@ -331,7 +331,6 @@ struct CastStorageRspDnsKernel {
   }
 };
 
-
 /*!
  * \brief This function assumes that the meomry for dns has been allocated already
  * since the shape is known at binding stage.
