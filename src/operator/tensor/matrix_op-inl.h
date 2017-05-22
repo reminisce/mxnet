@@ -323,7 +323,6 @@ inline bool ExpandDimShape(const nnvm::NodeAttrs& attrs,
 struct DotParam : public dmlc::Parameter<DotParam> {
   bool transpose_a;
   bool transpose_b;
-  int out_stype;  // output storage type
   DMLC_DECLARE_PARAMETER(DotParam) {
     DMLC_DECLARE_FIELD(transpose_a)
       .describe("If true then transpose the first input before dot.")
