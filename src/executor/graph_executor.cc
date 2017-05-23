@@ -539,10 +539,6 @@ void GraphExecutor::InitArguments(const nnvm::IndexedGraph& idx,
   data_entry_.resize(idx.num_node_entries());
   size_t arg_top = 0, aux_top = 0;
   auto mutable_nodes = idx.mutable_input_nodes();
-  const auto& shared_exec_in_args = shared_exec->in_arg_map();
-  const auto& shared_exec_arg_grads = shared_exec->arg_grad_map();
-  const auto& shared_exec_aux_states = shared_exec->aux_state_map();
-  // TODO(junwu): populate in_arg_map, arg_grad_map, and aux_state_map
   for (size_t i = 0; i < num_forward_inputs_; ++i) {
     const uint32_t nid = idx.input_nodes().at(i);
     const uint32_t eid = idx.entry_id(nid, 0);
@@ -551,7 +547,7 @@ void GraphExecutor::InitArguments(const nnvm::IndexedGraph& idx,
     const std::string& arg_name = idx[nid].source->attrs.name;
     if (mutable_nodes.count(nid)) {  // aux_states
       if (nullptr != shared_exec) {
-        const NDArray& aux_nd = shared_exec_aux_states.at(arg_name);
+        const NDArray& aux_nd = shared_exec->aux_state_map().at(arg_name);
         CHECK_EQ(inferred_shape, aux_nd.shape())
           << "Inferred shape does not match shared_exec.aux_array's shape."
              " Therefore, the allocated memory for shared_exec.aux_array cannot"
@@ -574,7 +570,7 @@ void GraphExecutor::InitArguments(const nnvm::IndexedGraph& idx,
     } else {  // in_args
       if (shared_arg_names.count(arg_name)) {  // model parameter
         if (nullptr != shared_exec) {
-          const NDArray& in_arg_nd = shared_exec_in_args.at(arg_name);
+          const NDArray& in_arg_nd = shared_exec->in_arg_map().at(arg_name);
           CHECK_EQ(inferred_shape, in_arg_nd.shape())
             << "Inferred shape does not match shared_exec.arg_array's shape"
                " Therefore, the allocated memory for shared_exec.arg_array cannot"
@@ -589,7 +585,7 @@ void GraphExecutor::InitArguments(const nnvm::IndexedGraph& idx,
           if (kNullOp == grad_req_types[arg_top]) {
             arg_grad_vec->emplace_back();
           } else {
-            arg_grad_vec->emplace_back(shared_exec_arg_grads.at(arg_name));
+            arg_grad_vec->emplace_back(shared_exec->arg_grad_map().at(arg_name));
             grad_store_.emplace_back(grad_req_types[arg_top], arg_grad_vec->back());
           }  // if (kNullOp == grad_req_types[arg_top])
         } else {  // !has shared_exec

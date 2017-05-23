@@ -178,6 +178,8 @@ int MXExecutorBindEX(SymbolHandle symbol_handle,
  * \param shared_buffer_len number of shared data arrays passed from _bind_ith_exec
  * \param shared_buffer_name_list shared data array names passed from _bind_ith_exec
  * \param shared_buffer_handle_list shared data array handles passed from _bind_ith_exec
+ * \param updated_shared_buffer_name_list updated shared data array names after binding
+ * \param updated_shared_buffer_handle_list updated shared data arrays after binding
  * \param num_in_args number of input arguments of this sym
  * \param in_args list_arguments associated with the current executor
  * \param arg_grads list of gradients of in_args associated with the current executor
@@ -205,9 +207,11 @@ int MXExecutorSimpleBind(SymbolHandle symbol_handle,
                          const int* provided_arg_dtypes,
                          const mx_uint num_shared_arg_names,
                          const char** shared_arg_name_list,
-                         mx_uint* shared_buffer_len,
-                         const char*** shared_buffer_name_list,
-                         NDArrayHandle** shared_buffer_handle_list,
+                         int* shared_buffer_len,
+                         const char** shared_buffer_name_list,
+                         NDArrayHandle* shared_buffer_handle_list,
+                         const char*** updated_shared_buffer_name_list,
+                         NDArrayHandle** updated_shared_buffer_handle_list,
                          mx_uint* num_in_args,
                          NDArrayHandle** in_args,
                          NDArrayHandle** arg_grads,
@@ -373,14 +377,14 @@ int MXExecutorSimpleBind(SymbolHandle symbol_handle,
   std::vector<NDArray> shared_exec_in_args;
   std::vector<NDArray> shared_exec_arg_grads;
   std::vector<NDArray> shared_exec_aux_states;
-  bool use_shared_buffer = (nullptr != *shared_buffer_handle_list);
-  if (use_shared_buffer) {
+  bool use_shared_buffer = (*shared_buffer_len >= 0);
+  if (*shared_buffer_len > 0) {
     // create shared_buffer_map
     shared_buffer_map.reserve(*shared_buffer_len);
-    NDArray*** shared_buffer_ptrs =
-      reinterpret_cast<NDArray***>(shared_buffer_handle_list);
-    for (mx_uint i = 0; i < *shared_buffer_len; ++i) {
-      shared_buffer_map[*shared_buffer_name_list[i]] = *(*shared_buffer_ptrs)[i];
+    NDArray** shared_buffer_ptrs =
+      reinterpret_cast<NDArray**>(shared_buffer_handle_list);
+    for (int i = 0; i < *shared_buffer_len; ++i) {
+      shared_buffer_map[shared_buffer_name_list[i]] = *(shared_buffer_ptrs[i]);
     }
   }
 
@@ -449,8 +453,8 @@ int MXExecutorSimpleBind(SymbolHandle symbol_handle,
       ret->ret_vec_charp.push_back(kv.first.c_str());
     }
     *shared_buffer_len = shared_buffer_map.size();
-    *shared_buffer_handle_list = &(ret->ret_handles[nd_idx]);
-    *shared_buffer_name_list = &(ret->ret_vec_charp[0]);
+    *updated_shared_buffer_handle_list = &(ret->ret_handles[nd_idx]);
+    *updated_shared_buffer_name_list = &(ret->ret_vec_charp[0]);
   }
 
   API_END();
