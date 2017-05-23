@@ -1300,7 +1300,7 @@ class Symbol(SymbolBase):
 
         # prepare shared_buffer
         if shared_buffer is None:
-            shared_buffer_len = mx_uint()
+            shared_buffer_len = ctypes.c_int(-1)
             shared_buffer_names = ctypes.POINTER(ctypes.c_char_p)()
             shared_buffer_handles = ctypes.POINTER(NDArrayHandle)()
         else:
@@ -1312,8 +1312,10 @@ class Symbol(SymbolBase):
                 shared_buffer_names.append(c_str(k))
                 shared_buffer_handles.append(v.handle)
             shared_buffer_names = c_array(ctypes.c_char_p, shared_buffer_names)
-            shared_buffer_len = mx_uint(len(shared_buffer_handles))
+            shared_buffer_len = ctypes.c_int(len(shared_buffer_handles))
             shared_buffer_handles = c_array(NDArrayHandle, shared_buffer_handles)
+        updated_shared_buffer_names = ctypes.POINTER(ctypes.c_char_p)()
+        updated_shared_buffer_handles = ctypes.POINTER(NDArrayHandle)()
 
         # prepare shared_exec_handle
         shared_exec_handle = shared_exec.handle if shared_exec is not None else ExecutorHandle()
@@ -1348,8 +1350,10 @@ class Symbol(SymbolBase):
                                              mx_uint(len(shared_arg_name_list)),
                                              c_array(ctypes.c_char_p, shared_arg_name_list),
                                              ctypes.byref(shared_buffer_len),
-                                             ctypes.byref(shared_buffer_names),
-                                             ctypes.byref(shared_buffer_handles),
+                                             shared_buffer_names,
+                                             shared_buffer_handles,
+                                             ctypes.byref(updated_shared_buffer_names),
+                                             ctypes.byref(updated_shared_buffer_handles),
                                              ctypes.byref(num_in_args),
                                              ctypes.byref(in_arg_handles),
                                              ctypes.byref(arg_grad_handles),
@@ -1360,11 +1364,9 @@ class Symbol(SymbolBase):
 
         # update shared_buffer
         if shared_buffer is not None:
-            updated_shared_buffer = [NDArray(NDArrayHandle(shared_buffer_handles[i]))
-                                     for i in range(shared_buffer_len.value)]
-            updated_shared_buffer_names = [py_str(shared_buffer_names[i])
-                                           for i in range(shared_buffer_len.value)]
-            for k, v in zip(updated_shared_buffer_names, updated_shared_buffer):
+            for i in range(shared_buffer_len.value):
+                k = py_str(updated_shared_buffer_names[i])
+                v = NDArray(NDArrayHandle(updated_shared_buffer_handles[i]))
                 shared_buffer[k] = v
 
         # create in_args, arg_grads, and aux_states for the current executor
