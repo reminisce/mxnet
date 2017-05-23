@@ -256,34 +256,43 @@ def test_monitor():
     assert(mon_result_counts == [2, 2, 1, 6, 6, 4])
 
 def test_executor_group():
-    def test_exec_group_create(origin_exec_grp, shared_exec_grp,
+    def test_create_exec_group(exec_grp_shared, exec_grp_created,
                                shared_arg_names, extra_input=[], extra_arg=[]):
         # Test shared data arrays
-        for i in range(len(origin_exec_grp.execs)):
-            for data_name, array in origin_exec_grp.shared_data_arrays[i].items():
-                assert data_name in shared_exec_grp.shared_data_arrays[i], "Shared data not in exec group."
-                assert mx.test_utils.same_array(array, shared_exec_grp.shared_data_arrays[i][data_name]),\
-                    "Data not sharing memory."
+        for i in range(len(exec_grp_shared.execs)):
+            for data_name, array in exec_grp_shared.shared_data_arrays[i].items():
+                assert data_name in exec_grp_created.shared_data_arrays[i], \
+                    "Shared input data '%s' is not in " \
+                    "shared_data_arrays of created executor group." % (data_name)
+                assert mx.test_utils.same_array(array, exec_grp_created.shared_data_arrays[i][data_name]), \
+                    "Shared input data '%s' does not share memory." % (data_name)
             for input_name in extra_input:
-                assert input_name in shared_exec_grp.execs[i].arg_dict,\
-                    "Extra input not in shared executor group."
+                assert input_name in exec_grp_created.execs[i].arg_dict, \
+                    "Extra input data '%s' is not in arg_dict of created executor group." % (input_name)
 
         # Test shared argument arrays and gradient arrays
-        for i in range(len(origin_exec_grp.execs)):
-            exec1 = origin_exec_grp.execs[i]
-            exec2 = shared_exec_grp.execs[i]
+        for i in range(len(exec_grp_shared.execs)):
+            exec1 = exec_grp_shared.execs[i]
+            exec2 = exec_grp_created.execs[i]
             for arg_name in shared_arg_names:
-                assert arg_name in exec2.arg_dict, "Shared argument not in exec group."
-                assert mx.test_utils.same_array(exec1.arg_dict[arg_name], exec2.arg_dict[arg_name]),\
-                    "Argument not sharing memory."
+                assert arg_name in exec2.arg_dict, \
+                    "Shared argument '%s' is not in arg_dict of created executor group." % (arg_name)
+                assert mx.test_utils.same_array(exec1.arg_dict[arg_name], exec2.arg_dict[arg_name]), \
+                    "Shared argument '%s' does not share memory." % (arg_name)
             for arg_name in extra_arg:
-                assert arg_name in exec2.arg_dict, "Extra argument not in shared executor group."
-            for arg_name, grad in origin_exec_grp.grad_req.items():
-                assert grad == shared_exec_grp.grad_req[arg_name], "Gradient requirements inconsistent"
+                assert arg_name in exec2.arg_dict, \
+                    "Extra argument '%s' is not in arg_dict of created executor group." % (arg_name)
+            for arg_name, grad in exec_grp_shared.grad_req.items():
+                assert grad == exec_grp_created.grad_req[arg_name], \
+                    "Gradient requirements for shared argument '%s' are inconsistent. " \
+                    "Shared executor group requires '%s' while created executor group requires '%s'" \
+                    %(arg_name, grad, exec_grp_created.grad_req[arg_name])
             for arg_name in shared_arg_names:
-                assert arg_name in exec2.grad_dict, "Shared argument gradient not in exec group."
-                assert mx.test_utils.same_array(exec1.grad_dict[arg_name], exec2.grad_dict[arg_name]),\
-                    "Argument gradient not sharing memory."
+                assert arg_name in exec2.grad_dict, \
+                    "Shared argument gradient '%s' is not in " \
+                    "grad_dict of created executor group." % (arg_name)
+                assert mx.test_utils.same_array(exec1.grad_dict[arg_name], exec2.grad_dict[arg_name]), \
+                    "Shared argument gradient '%s' does not sharing memory." % (arg_name)
 
     contexts = [mx.cpu(0), mx.cpu(1)]
     workload = [1] * len(contexts)
@@ -316,7 +325,7 @@ def test_executor_group():
                                             label_shapes=label_shapes, param_names=shared_arg_names,
                                             for_training=True, inputs_need_grad=False,
                                             shared_group=exec_group1)
-    test_exec_group_create(exec_group1, exec_group2, shared_arg_names)
+    test_create_exec_group(exec_group1, exec_group2, shared_arg_names)
 
     # Test two executor groups with different symbol sharing memory
     exec_group3 = DataParallelExecutorGroup(symbol=mlp2, contexts=contexts,
@@ -326,7 +335,7 @@ def test_executor_group():
                                             shared_group=exec_group1)
     extra_input = ['data2']
     extra_arg = ['fc2_weight', 'fc2_bias']
-    test_exec_group_create(exec_group1, exec_group3, shared_arg_names, extra_input, extra_arg)
+    test_create_exec_group(exec_group1, exec_group3, shared_arg_names, extra_input, extra_arg)
 
 if __name__ == '__main__':
     test_module_dtype()

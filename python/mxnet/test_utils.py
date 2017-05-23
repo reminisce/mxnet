@@ -1036,7 +1036,8 @@ def same_array(array1, array2):
         Whether two NDArrays share the same memory
     """
     array1[:] += 1
-    if(not np.array_equal(array1.asnumpy(), array2.asnumpy())):
+    if(not same(array1.asnumpy(), array2.asnumpy())):
+        array1[:] -= 1
         return False
     array1[:] -= 1
-    return np.array_equal(array1.asnumpy(), array2.asnumpy())
+    return same(array1.asnumpy(), array2.asnumpy())
