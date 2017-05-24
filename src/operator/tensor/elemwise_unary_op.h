@@ -533,7 +533,7 @@ inline void CastStorageDnsRspImpl(mshadow::Stream<gpu>* s, const TBlob& dns, NDA
   LOG(FATAL) << "CastStorageDnsRspImpl gpu version is not implemented.";
 }
 
-inline void CastStorageDnsCsrImpl(mshadow::Stream<cpu>* s, const TBlob& dns, NDArray* csr) {
+inline void CastStorageDnsCsrImpl(mshadow::Stream<gpu>* s, const TBlob& dns, NDArray* csr) {
   LOG(FATAL) << "CastStorageDnsCsrImpl gpu version is not implemented.";
 }
 #endif
