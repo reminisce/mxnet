@@ -109,6 +109,11 @@ def waitall():
     """
     check_call(_LIB.MXNDArrayWaitAll())
 
+def _storage_type(handle):
+    storage_type = ctypes.c_int(0)
+    check_call(_LIB.MXNDArrayGetStorageType(handle, ctypes.byref(storage_type)))
+    return _STORAGE_TYPE_ID_TO_STR[storage_type.value]
+
 class NDArray(NDArrayBase):
     """An array object representing a multidimensional, homogeneous array of
 fixed-size items.
@@ -734,9 +739,7 @@ fixed-size items.
 
     @property
     def storage_type(self):
-        storage_type = ctypes.c_int(0)
-        check_call(_LIB.MXNDArrayGetStorageType(self.handle, ctypes.byref(storage_type)))
-        return _STORAGE_TYPE_ID_TO_STR[storage_type.value]
+        return _storage_type(self.handle)
 
     @property
     # pylint: disable= invalid-name, undefined-variable
@@ -921,6 +924,13 @@ fixed-size items.
             return self
         return self.copyto(context)
 
+    def to_csr(self):
+        # pylint: disable=undefined-variable
+        return cast_storage(self, storage_type='csr')
+
+    def to_rsp(self):
+        # pylint: disable=undefined-variable
+        return cast_storage(self, storage_type='row_sparse')
 
 def onehot_encode(indices, out):
     """One-hot encoding indices into matrix out.
