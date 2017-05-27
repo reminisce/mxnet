@@ -115,9 +115,6 @@ fixed-size items, stored in sparse format.
     def __idiv__(self, other):
         raise Exception('Not implemented for SparseND yet!')
 
-    def __truediv__(self, other):
-        raise Exception('Not implemented for SparseND yet!')
-
     def __rtruediv__(self, other):
         raise Exception('Not implemented for SparseND yet!')
 

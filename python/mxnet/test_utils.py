@@ -10,7 +10,7 @@ import subprocess
 import os
 import errno
 import logging
-import scipy as sp
+import scipy.sparse as sp
 import numpy as np
 import numpy.testing as npt
 import numpy.random as rnd
@@ -88,7 +88,7 @@ def rand_sparse_ndarray(shape, storage_type, density=None):
         return arr, (val, indices)
     elif storage_type == 'csr':
         assert(len(shape) == 2)
-        csr = sp.sparse.rand(shape[0], shape[1], density=density, format='csr')
+        csr = sp.rand(shape[0], shape[1], density=density, format='csr')
         result = mx.sparse_nd.csr(csr.data, csr.indptr, csr.indices, shape)
         return result, (csr.indptr, csr.indices, csr.data)
     else:

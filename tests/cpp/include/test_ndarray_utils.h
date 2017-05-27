@@ -4,8 +4,8 @@
  * \brief operator unit test utility functions
  * \author Haibin Lin
 */
-#ifndef TESTS_CPP_TEST_UTILS_H_
-#define TESTS_CPP_TEST_UTILS_H_
+#ifndef TESTS_CPP_INCLUDE_TEST_NDARRAY_UTILS_H_
+#define TESTS_CPP_INCLUDE_TEST_NDARRAY_UTILS_H_
 
 /*#include <unistd.h>
 #include <dmlc/logging.h>
@@ -112,4 +112,4 @@ NDArray Convert(NDArrayStorageType type, NDArray src) {
   converted.WaitToRead();
   return converted;
 }*/
-#endif  // TESTS_CPP_TEST_UTILS_H_
+#endif  // TESTS_CPP_INCLUDE_TEST_NDARRAY_UTILS_H_

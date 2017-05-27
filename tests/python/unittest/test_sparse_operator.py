@@ -1,7 +1,7 @@
 # pylint: skip-file
 import numpy as np
 import mxnet as mx
-import scipy as sp
+import scipy.sparse as sp
 from numpy.testing import assert_allclose
 from mxnet.test_utils import *
 
@@ -90,7 +90,7 @@ def test_cast_storage_ex():
     def test_csr_to_dns(shape):
         csr, (indptr, indices, values) = rand_sparse_ndarray(shape, 'csr')
         mx_dns = csr.to_dense()
-        np_dns = sp.sparse.csr_matrix((values, indices, indptr), shape).todense()
+        np_dns = sp.csr_matrix((values, indices, indptr), shape).todense()
         assert_almost_equal(mx_dns.asnumpy(), np_dns)
 
     def test_dns_to_csr(dns_in):
