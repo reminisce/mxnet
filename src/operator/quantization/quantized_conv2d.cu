@@ -6,6 +6,7 @@
 */
 #include "./quantized_conv2d-inl.h"
 #include "./quantization_utils.h"
+#include "../tensor/matrix_op-inl.h"
 
 namespace mxnet {
 namespace op {
@@ -48,26 +49,48 @@ class QuantizedConv2DCuDNNOp : public Operator {
     TBlob data   = in_data[0];
     TBlob filter = in_data[1];
     TBlob out    = out_data[0];
+    const TShape& dshape = data.shape_;
+    const TShape& fshape = filter.shape_;
+    const TShape& oshape = out.shape_;
+
+    TBlob data_(ctx.requested[0].get_space_typed<gpu, 4, SrcType>(
+        mshadow::Shape4(dshape[0], dshape[2], dshape[3], dshape[1]), s));
+    TBlob filter_(ctx.requested[0].get_space_typed<gpu, 4, SrcType>(
+        mshadow::Shape4(fshape[0], fshape[2], fshape[3], fshape[1]), s));
+
+    // input:  [NCHW] => [NHWC](batch, in_height, in_width, in_channels)
+    // filter: [NCHW] => [NHWC](out_channels, filter_height, filter_width, in_channels)
+
+    TransposeImpl<gpu>(ctx.run_ctx, data,   data_,   TShape({0, 2, 3, 1}));
+    TransposeImpl<gpu>(ctx.run_ctx, filter, filter_, TShape({0, 2, 3, 1}));
+
     if (!init_temp_size_) GetTempSize(ctx);
     Tensor<gpu, 1, SrcType> workspace =
       ctx.requested[0].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
 
+    TBlob out_(ctx.requested[0].get_space_typed<gpu, 4, DstType>(
+        mshadow::Shape4(oshape[0], oshape[2], oshape[3], oshape[1]), s));
     float alpha = 1.0f;
     float beta = 0.0f;
+    // input:  [NHWC](batch, in_height, in_width, in_channels)
+    // filter: [HWNC](out_channels, filter_height, filter_width, in_channels)
+    // output: [NHWC](batch, out_height, out_width, out_channels)
     CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
                                        &alpha,
                                        data_desc_,
-                                       data.dptr_,
+                                       data_.dptr_,
                                        filter_desc_,
-                                       filter.dptr_,
+                                       filter_.dptr_,
                                        conv_desc_,
                                        algo_,
                                        workspace.dptr_,
                                        workspace_byte_,
                                        &beta,
                                        out_desc_,
-                                       out.dptr_));
+                                       out_.dptr_));
 
+    // output: [NHWC](batch, out_height, out_width, out_channels) => [NCHW]
+    TransposeImpl<gpu>(ctx.run_ctx, out_, out, TShape({0, 3, 1, 2}));
     mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
        in_data[2].dptr<float>(),  in_data[3].dptr<float>(),
@@ -108,26 +131,23 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                           format_,
                                           src_type_,
                                           dshape[0],
-                                          dshape[3],
                                           dshape[1],
-                                          dshape[2]));
+                                          dshape[2],
+                                          dshape[3]));
     CUDNN_CALL(cudnnSetTensor4dDescriptor(out_desc_,
                                           format_,
                                           dst_type_,
                                           oshape[0],
-                                          oshape[3],
                                           oshape[1],
-                                          oshape[2]));
-    // input:  [NHWC](batch, in_height, in_width, in_channels)
-    // filter: [HWNC](out_channels, filter_height, filter_width, in_channels)
-    // output: [NHWC](batch, out_height, out_width, out_channels)
+                                          oshape[2],
+                                          oshape[3]));
     CUDNN_CALL(cudnnSetFilter4dDescriptor(filter_desc_,
                                           src_type_,
                                           format_,
                                           kshape[0],
-                                          kshape[3],
                                           kshape[1],
-                                          kshape[2]));
+                                          kshape[2],
+                                          kshape[3]));
   }
 
   void GetTempSize(const OpContext& ctx) {
@@ -180,10 +200,8 @@ Operator* CreateOp<gpu>(int dtype,
                         const std::vector<TShape>& out_shape,
                         const QuantizedConv2DParam& param) {
   Operator *op = NULL;
-  MSHADOW_TYPE_SWITCH(mshadow::kFloat32, DstType, {
-    op = new QuantizedConv2DCuDNNOp<int8_t, DstType, int32_t>(ctx,
-      in_shape, out_shape, param);
-  })
+  op = new QuantizedConv2DCuDNNOp<int8_t, float, int32_t>(ctx,
+    in_shape, out_shape, param);
   return op;
 }
 
