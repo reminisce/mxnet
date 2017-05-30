@@ -35,7 +35,6 @@ def test_bucket_module():
 
     batch_size = 128
     num_epochs = 20
-    num_gpus = 4
     num_hidden = 50
     num_embed = 50
     num_layers = 2
@@ -78,15 +77,12 @@ def test_bucket_module():
 
         pred = mx.sym.Reshape(outputs, shape=(-1, num_hidden))
         pred = mx.sym.FullyConnected(data=pred, num_hidden=1, name='pred')
-        pred = mx.sym.reshape(pred, shape= (batch_size/num_gpus, -1))
+        pred = mx.sym.reshape(pred, shape= (batch_size, -1))
         loss = mx.sym.LinearRegressionOutput(pred, label, name='l2_loss')
 
         return loss, ('data',), ('l2_label',)
 
-    if num_gpus > 0:
-        contexts = [mx.gpu(int(i)) for i in range(num_gpus)]
-    else:
-        contexts = mx.cpu(0)
+    contexts = mx.cpu(0)
 
     model = mx.mod.BucketingModule(
         sym_gen             = sym_gen,
