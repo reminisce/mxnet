@@ -538,48 +538,32 @@ struct DotCsrDnsDns<false, false, req> {
 /*!
  * \brief Kernel of dot(csr.T(), dns1) = dns2
  */
-template<int req>
-struct DotCsrDnsDns<true, false, req> {
+struct DotCsrTransDnsDns {
   /*!
-   * \brief This function represents performing an inner product between a column of lhs
-   * and a column of rhs and then assigning the value to out[i].
-   * \param i i-th element in out 1D view
-   * \param out output matrix
-   * \param data_l csr values of lhs
-   * \param indptr_l csr indptr of lhs
-   * \param col_idx_l csr col_idx of lhs
-   * \param data_r dense data of rhs
-   * \param num_rows_l number of rows of lhs
-   * \param num_cols number of columns of outputs
+   * \brief
+   * \param i the i-th thread
    */
   template<typename DType, typename IType, typename CType>
   MSHADOW_XINLINE static void Map(int i, DType* out, const DType* data_l, const IType* indptr_l,
-                                  const CType* col_idx_l, const DType* data_r, const int num_rows_l,
-                                  const int num_cols) {
-    const int irow = i / num_cols;  // col id of the lhs
-    const int icol = i % num_cols;  // col id of the rhs
-    DType sum = 0;
-    for (int k = 0; k < num_rows_l; ++k) {
-      const IType low = indptr_l[k];
-      const IType high = indptr_l[k+1];
-      if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
-      int j = -1, l = low, r = high - 1;
-      while (l <= r) {
-        int m = l + (r - l) / 2;
-        if (col_idx_l[m] == irow) {
-          j = m; break;
+                                  const CType* col_idx_l, const DType* data_r, const size_t seg_len,
+                                  const size_t num_rows_l, const size_t num_rows,
+                                  const size_t num_cols) {
+    const size_t seg_start = i * seg_len;
+    if (seg_start >= num_rows) return;
+    const size_t seg_end = (i + 1) * seg_len;
+    for (size_t j = 0; j < num_rows_l; ++j) {
+      if (indptr_l[j] == indptr_l[j+1]) continue;
+      const size_t offset_r = j * num_cols;
+      for (auto k = indptr_l[j]; k < indptr_l[j+1]; ++k) {
+        const auto col_idx = col_idx_l[k];
+        if (col_idx < seg_start || col_idx >= seg_end) continue;
+        const size_t offset_out = col_idx * num_cols;
+        const auto val = data_l[k];
+        for (size_t l = 0; l < num_cols; ++l) {
+          out[offset_out+l] += data_r[offset_r+l] * val;
         }
-        if (col_idx_l[m] < irow) {
-          l = m + 1;
-        } else {
-          r = m - 1;
-        }
-      }
-      if (j >= 0) {
-        sum += data_l[j] * data_r[k*num_cols+icol];
       }
     }
-    KERNEL_ASSIGN(out[i], req, sum);
   }
 };
 
@@ -608,11 +592,22 @@ void DotCsrDnsDnsImpl(const OpContext& ctx,
         MSHADOW_INT_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
           if (!lhs.storage_initialized()) return;
           if (trans_lhs) {
-            mxnet_op::Kernel<DotCsrDnsDns<true, false, ReqType>, xpu>::Launch(s, data_out.Size(),
+            // parallelize by row blocks
+            int num_threads = mxnet_op::get_num_threads<xpu>(data_out.shape_[0]);
+            // divide output matrix row by num_threads
+            // each thread is responsible for seg_len rows
+            size_t seg_len = (data_out.shape_[0] + num_threads - 1) / num_threads;
+            if (kWriteTo == req) {
+              mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
+                  s, data_out.Size(), data_out.dptr<DType>());
+            }
+
+            mxnet_op::Kernel<DotCsrTransDnsDns, xpu>::Launch(s, num_threads,
                 data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
-                col_idx_l.dptr<CType>(), data_r.dptr<DType>(), lhs.shape()[0],
-                rhs.shape()[1]);
+                col_idx_l.dptr<CType>(), data_r.dptr<DType>(), seg_len,
+                lhs.shape()[0], data_out.shape_[0], data_out.shape_[1]);
           } else {
+            // TODO(junwu): implement parallelization by row blocks for cpu
             mxnet_op::Kernel<DotCsrDnsDns<false, false, ReqType>, xpu>::Launch(s, data_out.Size(),
                 data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
                 col_idx_l.dptr<CType>(), data_r.dptr<DType>(), rhs.shape()[1]);
