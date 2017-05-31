@@ -43,6 +43,7 @@ inline int cuda_get_num_blocks(const int N) {
 
 template<>
 inline int get_num_threads<gpu>(const int N) {
+  using namespace mshadow::cuda;
   return kBaseThreadNum * cuda_get_num_blocks(N);
 }
 #endif  // __CUDACC__
