@@ -50,7 +50,7 @@ inline int get_num_threads<gpu>(const int N) {
 
 template<>
 inline int get_num_threads<cpu>(const int N) {
-  return omp_get_num_threads();
+  return omp_get_max_threads();
 }
 
 /*! \brief operator request type switch */
