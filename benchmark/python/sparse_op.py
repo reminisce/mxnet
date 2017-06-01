@@ -1,4 +1,6 @@
 # pylint: skip-file
+import ctypes
+
 import mxnet as mx
 from mxnet.test_utils import *
 import numpy as np
@@ -7,6 +9,16 @@ import os, gzip
 import pickle as pickle
 import time
 import sys
+import argparse
+
+from mxnet.base import check_call, _LIB
+
+parser = argparse.ArgumentParser(description="Benchmark sparse operators",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--num-omp-threads', type=int, default=1, help='number of omp threads to set in MXNet')
+
+args = parser.parse_args()
+
 
 def get_avazu(data_dir):
     if not os.path.isdir(data_dir):
@@ -118,6 +130,7 @@ def test_dot_synthetic():
     print("dot_forward\tdot(csr, dns)")
     print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense')
 
+    check_call(_LIB.MXSetNumOMPThreads(ctypes.c_int(args.num_omp_threads)))
     # TODO(haibin) make these runtime options
     m = 512
     k = [50000, 100000]
