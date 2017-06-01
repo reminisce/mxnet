@@ -57,6 +57,8 @@ class QuantizedConv2DCuDNNOp : public Operator {
         mshadow::Shape4(dshape[0], dshape[2], dshape[3], dshape[1]), s));
     TBlob filter_(ctx.requested[0].get_space_typed<gpu, 4, SrcType>(
         mshadow::Shape4(fshape[0], fshape[2], fshape[3], fshape[1]), s));
+    TBlob out_(ctx.requested[0].get_space_typed<gpu, 4, DstType>(
+        mshadow::Shape4(oshape[0], oshape[2], oshape[3], oshape[1]), s));
 
     // input:  [NCHW] => [NHWC](batch, in_height, in_width, in_channels)
     // filter: [NCHW] => [NHWC](out_channels, filter_height, filter_width, in_channels)
@@ -68,8 +70,6 @@ class QuantizedConv2DCuDNNOp : public Operator {
     Tensor<gpu, 1, SrcType> workspace =
       ctx.requested[0].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
 
-    TBlob out_(ctx.requested[0].get_space_typed<gpu, 4, DstType>(
-        mshadow::Shape4(oshape[0], oshape[2], oshape[3], oshape[1]), s));
     float alpha = 1.0f;
     float beta = 0.0f;
     // input:  [NHWC](batch, in_height, in_width, in_channels)

@@ -43,5 +43,8 @@ MXNET_REGISTER_OP_PROPERTY(quantized_conv2d, QuantizedConv2DProp)
 .add_argument("max_filter", "NDArray-or-Symbol", "Maximum value of filter.")
 .add_arguments(QuantizedConv2DParam::__FIELDS__());
 
+NNVM_REGISTER_OP(quantized_conv2d)
+.set_attr<TQuantizationNeedShrink>("TQuantizationNeedShrink", true);
+
 }  // namespace op
 }  // namespace mxnet

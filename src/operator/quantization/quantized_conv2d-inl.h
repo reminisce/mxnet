@@ -8,6 +8,7 @@
 #ifndef MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_INL_H_
 #define MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_INL_H_
 #include <mxnet/operator.h>
+#include <mxnet/op_attr_types.h>
 #include "../operator_common.h"
 
 namespace mxnet {
@@ -75,8 +76,8 @@ class QuantizedConv2DProp : public OperatorProperty {
     CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape =  in_shape->at(0);
     CHECK_EQ(dshape.ndim(), 4U);
-    CHECK(dshape[1] % 4 == 0)
-      << "for 8bit cudnn conv, the number of channel must be multiple of 4";
+    // CHECK(dshape[1] % 4 == 0)
+    //   << "for 8bit cudnn conv, the number of channel must be multiple of 4";
     CHECK(param_.num_filter % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
 
@@ -112,7 +113,7 @@ class QuantizedConv2DProp : public OperatorProperty {
     }
 
     out_type->clear();
-    out_type->push_back(mshadow::kFloat32);
+    out_type->push_back(mshadow::kInt32);
     out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     return true;
