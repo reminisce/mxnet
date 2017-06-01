@@ -529,6 +529,55 @@ struct DotCsrDnsDns {
 };
 
 /*!
+ * \brief Kernel of dot(csr.T(), dns1) = dns2
+ * Parallelization by output matrix elements
+ */
+template<int req>
+struct DotCsrTransDnsDns {
+  /*!
+   * \brief This function represents performing an inner product between a column of lhs
+   * and a column of rhs and then assigning the value to out[i].
+   * \param i i-th element in out 1D view
+   * \param out output matrix
+   * \param data_l csr values of lhs
+   * \param indptr_l csr indptr of lhs
+   * \param col_idx_l csr col_idx of lhs
+   * \param data_r dense data of rhs
+   * \param num_rows_l number of rows of lhs
+   * \param num_cols number of columns of outputs
+   */
+  template<typename DType, typename IType, typename CType>
+  MSHADOW_XINLINE static void Map(int i, DType* out, const DType* data_l, const IType* indptr_l,
+                                  const CType* col_idx_l, const DType* data_r, const int num_rows_l,
+                                  const int num_cols) {
+    const int irow = i / num_cols;  // col id of the lhs
+    const int icol = i % num_cols;  // col id of the rhs
+    DType sum = 0;
+    for (int k = 0; k < num_rows_l; ++k) {
+      const IType low = indptr_l[k];
+      const IType high = indptr_l[k+1];
+      if (low == high || irow < col_idx_l[low] || irow > col_idx_l[high-1]) continue;
+      int j = -1, l = low, r = high - 1;
+      while (l <= r) {
+        int m = l + (r - l) / 2;
+        if (col_idx_l[m] == irow) {
+          j = m; break;
+        }
+        if (col_idx_l[m] < irow) {
+          l = m + 1;
+        } else {
+          r = m - 1;
+        }
+      }
+      if (j >= 0) {
+        sum += data_l[j] * data_r[k*num_cols+icol];
+      }
+    }
+    KERNEL_ASSIGN(out[i], req, sum);
+  }
+};
+
+/*!
  * \brief Kernel of dot(csr, dns1) = dns2
  * Parallelization by row blocks
  */
@@ -614,31 +663,33 @@ void DotCsrDnsDnsImpl(const OpContext& ctx,
   MSHADOW_TYPE_SWITCH(data_l.type_flag_, DType, {  // data type
     MSHADOW_INT_TYPE_SWITCH(indptr_l.type_flag_, IType, {  // indptr type
       MSHADOW_INT_TYPE_SWITCH(col_idx_l.type_flag_, CType, {  // col idx type
-        // parallelize by row blocks
-        // divide output matrix row by num_threads
-        // each thread is responsible for seg_len rows
-        int num_threads = mxnet_op::get_num_threads<xpu>(data_out.shape_[0]);
-        size_t seg_len = (data_out.shape_[0] + num_threads - 1) / num_threads;
-        if (trans_lhs) {
+        if (std::is_same<xpu, cpu>::value) {  // cpu parallelization by row blocks
           if (kWriteTo == req) {
             mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
                 s, data_out.Size(), data_out.dptr<DType>());
           }
-          mxnet_op::Kernel<DotCsrTransDnsDnsByRowBlocks, xpu>::Launch(s, num_threads,
-              data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
-              col_idx_l.dptr<CType>(), data_r.dptr<DType>(), seg_len,
-              lhs.shape()[0], data_out.shape_[0], data_out.shape_[1]);
-        } else {
-          if (std::is_same<xpu, cpu>::value) {  // cpu parallelization by row blocks
-            if (kWriteTo == req) {
-              mxnet_op::Kernel<mxnet_op::set_zero, xpu>::Launch(
-                  s, data_out.Size(), data_out.dptr<DType>());
-            }
+          int num_threads = mxnet_op::get_num_threads<xpu>(data_out.shape_[0]);
+          size_t seg_len = (data_out.shape_[0] + num_threads - 1) / num_threads;
+          if (trans_lhs) {
+            mxnet_op::Kernel<DotCsrTransDnsDnsByRowBlocks, xpu>::Launch(s, num_threads,
+                data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
+                col_idx_l.dptr<CType>(), data_r.dptr<DType>(), seg_len,
+                lhs.shape()[0], data_out.shape_[0], data_out.shape_[1]);
+          } else {
             mxnet_op::Kernel<DotCsrDnsDnsByRowBlocks, xpu>::Launch(s, num_threads,
                 data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
                 col_idx_l.dptr<CType>(), data_r.dptr<DType>(), seg_len,
                 data_out.shape_[0], data_out.shape_[1]);
-          } else {  // gpu parallelization by output elements
+          }
+        } else {  // gpu parallelization by output elements
+          if (trans_lhs) {
+            MXNET_ASSIGN_REQ_SWITCH(req, ReqType, {
+              mxnet_op::Kernel<DotCsrTransDnsDns<ReqType>, xpu>::Launch(s, data_out.Size(),
+                  data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
+                  col_idx_l.dptr<CType>(), data_r.dptr<DType>(), lhs.shape()[0],
+                  data_out.shape_[1]);
+            });
+          } else {
             MXNET_ASSIGN_REQ_SWITCH(req, ReqType, {
               mxnet_op::Kernel<DotCsrDnsDns<ReqType>, xpu>::Launch(s, data_out.Size(),
                   data_out.dptr<DType>(), data_l.dptr<DType>(), indptr_l.dptr<IType>(),
