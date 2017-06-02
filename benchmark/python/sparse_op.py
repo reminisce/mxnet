@@ -1,14 +1,9 @@
-# pylint: skip-file
 import ctypes
 
-import mxnet as mx
 from mxnet.test_utils import *
-import numpy as np
 import scipy.sparse as sp
-import os, gzip
-import pickle as pickle
+import os
 import time
-import sys
 import argparse
 
 from mxnet.base import check_call, _LIB
@@ -25,7 +20,7 @@ def get_avazu(data_dir):
         os.system("mkdir " + data_dir)
     os.chdir(data_dir)
     if (not os.path.exists('avazu-app.t')):
-        import urllib, zipfile
+        import urllib
         zippath = os.path.join(data_dir, "avazu-app.t.bz2")
         url = "https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/avazu-app.t.bz2"
         urllib.urlretrieve(url, zippath)
@@ -71,22 +66,39 @@ def test_dot_real():
     cost = end - start
     print(size / cost, cost, num_batch, num_batch / cost)
 
+
 def test_dot_synthetic():
     """benchmark mx.nd.dot(sparse_ndarray, dense_ndarray) with given density.
     `t_sparse` is the time cost of dot(csr, dns), while `t_dense` is the time cost
     of dot(dns, dns), with the same matrix except that it is in default storage type.
     """
+    def measure_cost_forward_baseline(repeat, dot, lhs, rhs):
+        start = time.time()
+        for i in range(repeat):
+            dot(lhs, rhs)
+        end = time.time()
+        diff = end - start
+        return diff / repeat
+
+    def measure_cost_backward_baseline(repeat, dot, transpose, lhs, rhs):
+        start = time.time()
+        for i in range(repeat):
+            dot(transpose(lhs), rhs)
+        end = time.time()
+        diff = end -start
+        return diff / repeat
+
     def measure_cost(repeat, f, *args, **kwargs):
-       # start bench
-       start = time.time()
-       results = []
-       for i in range(repeat):
-           results.append(f(*args, **kwargs))
-       for result in results:
-           result.wait_to_read()
-       end = time.time()
-       diff = end - start
-       return diff / repeat
+        # start bench
+        start = time.time()
+        results = []
+        for i in range(repeat):
+            results.append(f(*args, **kwargs))
+        for result in results:
+            result.wait_to_read()
+        end = time.time()
+        diff = end - start
+        return diff / repeat
 
     def bench_dot_forward(m, k, n, density, ctx, repeat):
         set_default_context(ctx)
@@ -94,6 +106,9 @@ def test_dot_synthetic():
         data_shape = (m, k)
         csr_data = rand_ndarray(data_shape, 'csr', density)
         dns_data = csr_data.to_dense()
+        rhs_dns_np = dns.asnumpy()
+        lhs_csr_sp = sp.csr_matrix(dns_data.asnumpy())  # csr in scipy
+        lhs_dns_np = lhs_csr_sp.todense()
 
         data = [dns_data, csr_data]
         costs = []
@@ -103,8 +118,16 @@ def test_dot_synthetic():
             cost = measure_cost(repeat, mx.nd.dot, d, dns)
             costs.append(cost / repeat)
         ratio = costs[1] / costs[0]
-        fmt = "%0.1f\t\t%s\t%d\t%d\t%d\t%0.6f\t%0.5f\t%0.2f"
-        print(fmt % (density * 100, str(ctx), n, m, k, costs[1], costs[0], ratio))
+
+        costs_baseline = []
+        cost = measure_cost_forward_baseline(repeat, np.dot, lhs_dns_np, rhs_dns_np)
+        costs_baseline.append(cost)
+        cost = measure_cost_forward_baseline(repeat, sp.spmatrix.dot, lhs_csr_sp, rhs_dns_np)
+        costs_baseline.append(cost)
+        ratio_baseline = costs_baseline[1] / costs_baseline[0]
+        fmt = "%0.1f\t\t%s\t%d\t%d\t%d\t%0.6f\t%0.5f\t%0.2f\t\t\t%0.6f\t%0.5f\t\t%0.2f"
+        print(fmt % (density * 100, str(ctx), n, m, k, costs[1], costs[0], ratio,
+                     costs_baseline[1], costs_baseline[0], ratio_baseline))
 
     def bench_dot_backward(m, k, n, density, ctx, repeat):
         set_default_context(ctx)
@@ -112,6 +135,9 @@ def test_dot_synthetic():
         data_shape = (m, k)
         csr_data = rand_ndarray(data_shape, 'csr', density)
         dns_data = csr_data.to_dense()
+        rhs_dns_np = dns.asnumpy()
+        lhs_csr_sp = sp.csr_matrix(dns_data.asnumpy())
+        lhs_dns_np = lhs_csr_sp.todense()
 
         data = [dns_data, csr_data]
         costs = []
@@ -121,14 +147,21 @@ def test_dot_synthetic():
             cost = measure_cost(repeat, mx.nd.dot, d, dns, transpose_a=True)
             costs.append(cost)
         ratio = costs[1] / costs[0]
-        fmt = "%0.1f\t\t%s\t%d\t%d\t%d\t%0.6f\t%0.5f\t%0.2f"
-        print(fmt % (density * 100, str(ctx), n, m, k, costs[1], costs[0], ratio))
 
+        costs_baseline = []
+        cost = measure_cost_backward_baseline(repeat, np.dot, np.transpose, lhs_dns_np, rhs_dns_np)
+        costs_baseline.append(cost)
+        cost = measure_cost_backward_baseline(repeat, sp.spmatrix.dot, sp.spmatrix.transpose, lhs_csr_sp, rhs_dns_np)
+        costs_baseline.append(cost)
+        ratio_baseline = costs_baseline[1] / costs_baseline[0]
+        fmt = "%0.1f\t\t%s\t%d\t%d\t%d\t%0.6f\t%0.5f\t%0.2f\t\t\t%0.6f\t%0.5f\t\t%0.2f"
+        print(fmt % (density * 100, str(ctx), n, m, k, costs[1], costs[0], ratio,
+                     costs_baseline[1], costs_baseline[0], ratio_baseline))
 
     print("A = sparse NDArray of shape(m, k)")
     print("B = dense NDArray of shape(k, n)")
     print("dot_forward\tdot(csr, dns)")
-    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense')
+    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense\tt_scipy_sparse\tt_scipy_dense\tt_scipy_sparse/t_scipy_dense')
 
     check_call(_LIB.MXSetNumOMPThreads(ctypes.c_int(args.num_omp_threads)))
     # TODO(haibin) make these runtime options
@@ -145,7 +178,7 @@ def test_dot_synthetic():
                 bench_dot_forward(m, k[i], n[i], den, ctx, num_repeat)
 
     print("dot_backward\tdot(csr.T, dns)")
-    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense')
+    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense\tt_scipy_sparse\tt_scipy_dense\tt_scipy_sparse/t_scipy_dense')
     for i in range(2):
         for ctx in contexts:
             for den in density:
