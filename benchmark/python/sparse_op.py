@@ -11,7 +11,6 @@ from mxnet.base import check_call, _LIB
 parser = argparse.ArgumentParser(description="Benchmark sparse operators",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num-omp-threads', type=int, default=1, help='number of omp threads to set in MXNet')
-
 args = parser.parse_args()
 
 
@@ -27,6 +26,7 @@ def get_avazu(data_dir):
         # decompress
         os.system("bzip2 -d avazu-app.t.bz2")
     os.chdir("..")
+
 
 def test_dot_real():
     def get_iter(path, data_shape, batch_size):
@@ -161,7 +161,8 @@ def test_dot_synthetic():
     print("A = sparse NDArray of shape(m, k)")
     print("B = dense NDArray of shape(k, n)")
     print("dot_forward\tdot(csr, dns)")
-    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense\tt_scipy_sparse\tt_scipy_dense\tt_scipy_sparse/t_scipy_dense')
+    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense'
+          '\tt_scipy_sparse\tt_scipy_dense\tt_scipy_sparse/t_scipy_dense')
 
     check_call(_LIB.MXSetNumOMPThreads(ctypes.c_int(args.num_omp_threads)))
     # TODO(haibin) make these runtime options
@@ -178,7 +179,8 @@ def test_dot_synthetic():
                 bench_dot_forward(m, k[i], n[i], den, ctx, num_repeat)
 
     print("dot_backward\tdot(csr.T, dns)")
-    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense\tt_scipy_sparse\tt_scipy_dense\tt_scipy_sparse/t_scipy_dense')
+    print('density(%)\tcontext\tn\tm\tk\tt_sparse\tt_dense\tt_sparse/t_dense'
+          '\tt_scipy_sparse\tt_scipy_dense\tt_scipy_sparse/t_scipy_dense')
     for i in range(2):
         for ctx in contexts:
             for den in density:
