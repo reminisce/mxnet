@@ -172,5 +172,18 @@ There are other options to tune the performance.
 .add_argument("bias", "NDArray-or-Symbol", "Bias parameter.")
 .add_arguments(ConvolutionParam::__FIELDS__());
 
+NNVM_REGISTER_OP(Convolution)
+.set_attr<FQuantizedOp>("FQuantizedOp", [](nnvm::NodePtr n) {
+    const nnvm::NodeAttrs& attrs = n->attrs;
+    nnvm::NodePtr node = nnvm::Node::Create();
+    node->attrs.op = Op::Get("quantized_conv2d");
+    node->attrs.name = "quantized_" + attrs.name;
+    node->attrs.dict = attrs.dict;
+    if (node->op()->attr_parser != nullptr) {
+      node->op()->attr_parser(&(node->attrs));
+    }
+    return node;
+  });
+
 }  // namespace op
 }  // namespace mxnet

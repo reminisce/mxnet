@@ -47,7 +47,19 @@ The storage type of ``relu`` output depends upon the input storage type:
 .set_attr<FComputeEx>("FComputeEx<cpu>",
     UnaryOp::KernelComputeEx<cpu, kernel_launch_op::relu>)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_relu"})
-.set_attr<TQuantizedOpName>("TQuantizedOpName", "quantized_relu");
+.set_attr<TQuantizedOpName>("TQuantizedOpName", "quantized_relu")
+.set_attr<FQuantizedOp>("FQuantizedOp", [](nnvm::NodePtr n) {
+    const NodeAttrs& attrs = n->attrs;
+    nnvm::NodePtr node = nnvm::Node::Create();
+    node->attrs.op = Op::Get("quantized_relu");
+    node->attrs.name = "quantized_" + attrs.name;
+    node->attrs.dict = attrs.dict;
+    if (node->op()->attr_parser != nullptr) {
+      node->op()->attr_parser(&(node->attrs));
+    }
+    return node;
+  });
+
 
 MXNET_OPERATOR_REGISTER_BINARY_WITH_SPARSE_CPU(_backward_relu, kernel_launch_op::relu_grad);
 

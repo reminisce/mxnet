@@ -266,6 +266,7 @@ void SetDependency(std::vector<engine::VarHandle> *p_read_vars,
     for (const auto& req : tmp_resource[op](attrs)) {
       switch (req.type) {
        case ResourceRequest::kTempSpace:
+        LOG(INFO) << "ntmp: " << ntmp;
         ++ntmp;
        case ResourceRequest::kRandom:
         requested.push_back(ResourceManager::Get()->Request(ctx, req));
@@ -275,7 +276,7 @@ void SetDependency(std::vector<engine::VarHandle> *p_read_vars,
         LOG(FATAL) << "resource type not yet supported";
       }
     }
-    CHECK_LE(ntmp, 1) << "Only support 1 temp space request";
+    // CHECK_LE(ntmp, 1) << "Only support 1 temp space request";
   }
 
   for (auto& i : ndinputs) {
@@ -497,6 +498,7 @@ void ImperativeInvokeImpl(const Context& default_ctx,
   static auto& ndfunc = nnvm::Op::GetAttr<FNDArrayFunction>("FNDArrayFunction");
   static auto& createop = nnvm::Op::GetAttr<FCreateOpState>("FCreateOpState");
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
+  // LOG(INFO) << "op: " << op->name;
 
   const nnvm::Op *op = attrs.op;
   std::vector<NDArray>& ndinputs  = *p_ndinputs;

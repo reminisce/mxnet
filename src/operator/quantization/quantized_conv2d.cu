@@ -53,9 +53,10 @@ class QuantizedConv2DCuDNNOp : public Operator {
     const TShape& fshape = filter.shape_;
     const TShape& oshape = out.shape_;
 
-    TBlob data_(ctx.requested[0].get_space_typed<gpu, 4, SrcType>(
+    int res_cnt = 0;
+    TBlob data_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
         mshadow::Shape4(dshape[0], dshape[2], dshape[3], dshape[1]), s));
-    TBlob filter_(ctx.requested[0].get_space_typed<gpu, 4, SrcType>(
+    TBlob filter_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
         mshadow::Shape4(fshape[0], fshape[2], fshape[3], fshape[1]), s));
 
     // input:  [NCHW] => [NHWC](batch, in_height, in_width, in_channels)
@@ -66,15 +67,18 @@ class QuantizedConv2DCuDNNOp : public Operator {
 
     if (!init_temp_size_) GetTempSize(ctx);
     Tensor<gpu, 1, SrcType> workspace =
-      ctx.requested[0].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
+      ctx.requested[res_cnt++].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
 
     float alpha = 1.0f;
     float beta = 0.0f;
-    TBlob out_(ctx.requested[0].get_space_typed<gpu, 4, DstType>(
+    TBlob out_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
+        mshadow::Shape4(oshape[0], oshape[2], oshape[3], oshape[1]), s));
+    TBlob out_tcast(ctx.requested[res_cnt++].get_space_typed<gpu, 4, int32_t>(
         mshadow::Shape4(oshape[0], oshape[2], oshape[3], oshape[1]), s));
     // input:  [NHWC](batch, in_height, in_width, in_channels)
     // filter: [HWNC](out_channels, filter_height, filter_width, in_channels)
     // output: [NHWC](batch, out_height, out_width, out_channels)
+
     CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
                                        &alpha,
                                        data_desc_,
@@ -90,7 +94,11 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                        out_.dptr_));
 
     // output: [NHWC](batch, out_height, out_width, out_channels) => [NCHW]
-    TransposeImpl<gpu>(ctx.run_ctx, out_, out, TShape({0, 3, 1, 2}));
+    Tensor<gpu, 1, DstType> out_tensor = out_.FlatTo1D<gpu, DstType>(s);
+    Tensor<gpu, 1, int32_t> out_tcast_tensor = out_tcast.FlatTo1D<gpu, int32_t>(s);
+    Assign(out_tcast_tensor, kWriteTo, mshadow::expr::tcast<int32_t>(out_tensor));
+    TransposeImpl<gpu>(ctx.run_ctx, out_tcast, out, TShape({0, 3, 1, 2}));
+
     mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
        in_data[2].dptr<float>(),  in_data[3].dptr<float>(),

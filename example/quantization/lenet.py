@@ -41,6 +41,8 @@ mnist = fetch_mldata('MNIST original')
 np.random.seed(1234) # set seed for deterministic ordering
 p = np.random.permutation(mnist.data.shape[0])
 X = mnist.data[p].reshape(70000, 1, 28, 28)
+pad = np.zeros(shape=(70000, 3, 28, 28))
+X = np.concatenate([X, pad], axis=1)
 Y = mnist.target[p]
 
 X = X.astype(np.float32)/255
@@ -55,13 +57,18 @@ val_iter = mx.io.NDArrayIter(X_test, Y_test, batch_size=batch_size)
 # create a trainable module on GPU 0
 lenet_model = mx.mod.Module(symbol=lenet, context=mx.gpu(0))
 # train with the same
-lenet_model.fit(train_iter,
-                eval_data=val_iter,
-                optimizer='sgd',
-                optimizer_params={'learning_rate':0.1},
-                eval_metric='acc',
-                batch_end_callback = mx.callback.Speedometer(batch_size, 100),
-                num_epoch=10)
+# lenet_model.fit(train_iter,
+#                 eval_data=val_iter,
+#                 optimizer='sgd',
+#                 optimizer_params={'learning_rate':0.1},
+#                 eval_metric='acc',
+#                 batch_end_callback = mx.callback.Speedometer(batch_size, 100),
+#                 num_epoch=10)
+# lenet_model.save_checkpoint('lenet', 10)
+sym, arg_params, aux_params = mx.model.load_checkpoint('lenet', 10)
+lenet_model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
+lenet_model.set_params(arg_params=arg_params, aux_params=aux_params)
+
 
 test_iter = val_iter
 # predict accuracy for lenet

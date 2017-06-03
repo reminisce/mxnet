@@ -65,7 +65,7 @@ std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs) {
 }
 
 Graph QuantizeGraph(Graph &&src) {
-  static auto& quantized_op_map = Op::GetAttr<mxnet::TQuantizedOpName>("TQuantizedOpName");
+  static auto& quantized_op_map = Op::GetAttr<mxnet::FQuantizedOp>("FQuantizedOp");
   static auto& need_shrink_map = Op::GetAttr<mxnet::TQuantizationNeedShrink>("TQuantizationNeedShrink");
   bool offline = src.GetAttr<int>("offline");
 
@@ -74,12 +74,8 @@ Graph QuantizeGraph(Graph &&src) {
 
     NodePtr new_node = Node::Create();
     if (quantized_op_map.count(node->op())) {
-      new_node->attrs.op = Op::Get(quantized_op_map[node->op()]);
-      new_node->attrs.name = "quantized_" + node->attrs.name;
-      new_node->attrs.dict = node->attrs.dict;
-      if (new_node->op()->attr_parser != nullptr) {
-        new_node->op()->attr_parser(&(new_node->attrs));
-      }
+      auto fquantized_op = quantized_op_map[node->op()];
+      new_node = fquantized_op(node);
 
       // add data into quantized op input
       for (const auto& e : node->inputs) {

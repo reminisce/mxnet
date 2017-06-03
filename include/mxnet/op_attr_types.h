@@ -246,6 +246,8 @@ using FInferStorageType = std::function<bool (const NodeAttrs& attrs,
 
 using TQuantizedOpName = std::string;
 
+using FQuantizedOp = std::function<nnvm::NodePtr (nnvm::NodePtr n)>;
+
 using TQuantizationNeedShrink = bool;
 
 }  // namespace mxnet

@@ -76,8 +76,8 @@ class QuantizedConv2DProp : public OperatorProperty {
     CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape =  in_shape->at(0);
     CHECK_EQ(dshape.ndim(), 4U);
-    // CHECK(dshape[1] % 4 == 0)
-    //   << "for 8bit cudnn conv, the number of channel must be multiple of 4";
+    CHECK(dshape[1] % 4 == 0)
+      << "for 8bit cudnn conv, the number of channel must be multiple of 4";
     CHECK(param_.num_filter % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
 
@@ -113,7 +113,7 @@ class QuantizedConv2DProp : public OperatorProperty {
     }
 
     out_type->clear();
-    out_type->push_back(mshadow::kFloat32);
+    out_type->push_back(mshadow::kInt32);
     out_type->push_back(mshadow::kFloat32);
     out_type->push_back(mshadow::kFloat32);
     return true;
@@ -131,7 +131,7 @@ class QuantizedConv2DProp : public OperatorProperty {
 
   std::vector<ResourceRequest> ForwardResource(
       const std::vector<TShape> &in_shape) const override {
-    return {ResourceRequest::kTempSpace};
+    return std::vector<ResourceRequest>(5, ResourceRequest::kTempSpace);
   }
 
   Operator* CreateOperator(Context ctx) const override {
