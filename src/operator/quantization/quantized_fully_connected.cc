@@ -48,5 +48,18 @@ MXNET_REGISTER_OP_PROPERTY(quantized_fully_connected, QuantizedFullyConnectedPro
 NNVM_REGISTER_OP(quantized_fully_connected)
 .set_attr<TQuantizationNeedShrink>("TQuantizationNeedShrink", true);
 
+NNVM_REGISTER_OP(FullyConnected)
+.set_attr<FQuantizedOp>("FQuantizedOp", [](nnvm::NodePtr n) {
+    const nnvm::NodeAttrs& attrs = n->attrs;
+    nnvm::NodePtr node = nnvm::Node::Create();
+    node->attrs.op = Op::Get("quantized_fully_connected");
+    node->attrs.name = "quantized_" + attrs.name;
+    node->attrs.dict = attrs.dict;
+    if (node->op()->attr_parser != nullptr) {
+      node->op()->attr_parser(&(node->attrs));
+    }
+    return node;
+  });
+
 }  // namespace op
 }  // namespace mxnet

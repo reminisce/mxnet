@@ -60,7 +60,6 @@ The storage type of ``relu`` output depends upon the input storage type:
     return node;
   });
 
-
 MXNET_OPERATOR_REGISTER_BINARY_WITH_SPARSE_CPU(_backward_relu, kernel_launch_op::relu_grad);
 
 // sigmoid

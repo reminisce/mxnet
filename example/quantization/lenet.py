@@ -30,8 +30,8 @@ batch_size = 32
 
 data = mx.symbol.Variable('data')
 conv1 = mx.symbol.Convolution(data=data, kernel=(5, 5), num_filter=20, no_bias=True)
-tanh1 = mx.symbol.tanh(data=conv1)
-flatten = mx.symbol.flatten(data=tanh1)
+relu1 = mx.symbol.relu(data=conv1)
+flatten = mx.symbol.flatten(data=relu1)
 fc1 = mx.symbol.FullyConnected(data=flatten, num_hidden=10)
 lenet = mx.symbol.SoftmaxOutput(data=fc1, name='softmax')
 

@@ -4,6 +4,7 @@
  * \brief
  * \author Ziheng Jiang
 */
+#include <mxnet/op_attr_types.h>
 #include "./quantized_relu-inl.h"
 
 namespace mxnet {
@@ -36,6 +37,21 @@ MXNET_REGISTER_OP_PROPERTY(quantized_relu, QuantizedReluProp)
 .add_argument("data", "NDArray-or-Symbol", "Input array to activation function.")
 .add_argument("min_data", "NDArray-or-Symbol", "")
 .add_argument("max_data", "NDArray-or-Symbol", "");
+
+
+NNVM_REGISTER_OP(relu)
+.set_attr<FQuantizedOp>("FQuantizedOp", [](nnvm::NodePtr n) {
+    const NodeAttrs& attrs = n->attrs;
+    nnvm::NodePtr node = nnvm::Node::Create();
+    node->attrs.op = Op::Get("quantized_relu");
+    node->attrs.name = "quantized_" + attrs.name;
+    node->attrs.dict = attrs.dict;
+    if (node->op()->attr_parser != nullptr) {
+      node->op()->attr_parser(&(node->attrs));
+    }
+    return node;
+  });
+
 
 }  // namespace op
 }  // namespace mxnet
