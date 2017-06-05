@@ -264,5 +264,80 @@ Examples::
 .add_argument("indices", "NDArray-or-Symbol", "array of locations where to set on_value")
 .add_arguments(OneHotParam::__FIELDS__());
 
+
+NNVM_REGISTER_OP(one_hot)
+.describe(R"code(Returns a one-hot array.
+
+The locations represented by `indices` take value `on_value`, while all
+other locations take value `off_value`.
+
+`one_hot` operation with `indices` of shape ``(i0, i1)`` and `depth`  of ``d`` would result
+in an output array of shape ``(i0, i1, d)`` with::
+
+  output[i,j,:] = off_value
+  output[i,j,indices[i,j]] = on_value
+
+Examples::
+
+  one_hot([1,0,2,0], 3) = [[ 0.  1.  0.]
+                           [ 1.  0.  0.]
+                           [ 0.  0.  1.]
+                           [ 1.  0.  0.]]
+
+  one_hot([1,0,2,0], 3, on_value=8, off_value=1,
+          dtype='int32') = [[1 8 1]
+                            [8 1 1]
+                            [1 1 8]
+                            [8 1 1]]
+
+  one_hot([[1,0],[1,0],[2,0]], 3) = [[[ 0.  1.  0.]
+                                      [ 1.  0.  0.]]
+
+                                     [[ 0.  1.  0.]
+                                      [ 1.  0.  0.]]
+
+                                     [[ 0.  0.  1.]
+                                      [ 1.  0.  0.]]]
+)code" ADD_FILELINE)
+.set_num_outputs(1)
+.set_num_inputs(1)
+.set_attr_parser(ParamParser<OneHotParam>)
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"indices"};
+  })
+.set_attr<nnvm::FInferShape>("FInferShape", OneHotOpShape)
+.set_attr<nnvm::FInferType>("FInferType", OneHotOpType)
+.set_attr<FCompute>("FCompute<cpu>", OneHotOpForward<cpu>)
+.set_attr<nnvm::FGradient>("FGradient", MakeZeroGradNodes)
+.add_argument("indices", "NDArray-or-Symbol", "array of locations where to set on_value")
+.add_arguments(OneHotParam::__FIELDS__());
+
+NNVM_REGISTER_OP(sparse_retain)
+.describe(R"code(pick rows specified by user input index array from a row sparse matrix
+)code" ADD_FILELINE)
+.set_num_inputs(2)
+.set_num_outputs(1)
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"data", "indices"};
+  })
+.set_attr<nnvm::FInferShape>("FInferShape", SparseRetainOpShape)
+.set_attr<nnvm::FInferType>("FInferType", SparseRetainOpType)
+.set_attr<FComputeEx>("FComputeEx<cpu>", SparseRetainOpForwardEx<cpu>)
+.set_attr<nnvm::FGradient>("FGradient",
+  [](const nnvm::NodePtr& n, const std::vector<nnvm::NodeEntry>& ograds) {
+    return MakeNonlossGradNode("_backward_sparse_retain", n, ograds,
+                               {n->inputs[sr::kIdx]}, n->attrs.dict);
+  })
+.add_argument("data", "NDArray-or-Symbol", "The input array for sparse_retain operator.")
+.add_argument("indices", "NDArray-or-Symbol", "The index array of rows ids that will be retained.");
+
+NNVM_REGISTER_OP(_backward_sparse_retain)
+.set_num_inputs(2)
+.set_num_outputs(2)
+.set_attr<nnvm::TIsBackward>("TIsBackward", true)
+.set_attr<FComputeEx>("FComputeEx<cpu>", SparseRetainOpBackwardEx<cpu>);
+
 }  // namespace op
 }  // namespace mxnet
