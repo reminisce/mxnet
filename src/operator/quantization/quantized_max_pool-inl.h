@@ -19,7 +19,6 @@ struct QuantizedMaxPoolParam : public dmlc::Parameter<QuantizedMaxPoolParam> {
   TShape kernel;
   TShape stride;
   TShape pad;
-  int convention;
   DMLC_DECLARE_PARAMETER(QuantizedMaxPoolParam) {
     DMLC_DECLARE_FIELD(kernel)
     .enforce_nonzero()
@@ -29,10 +28,6 @@ struct QuantizedMaxPoolParam : public dmlc::Parameter<QuantizedMaxPoolParam> {
     .describe("stride: for pooling (y, x) or (d, y, x)");
     DMLC_DECLARE_FIELD(pad).set_default(TShape())
     .describe("pad for pooling: (y, x) or (d, y, x)");
-    DMLC_DECLARE_FIELD(convention).set_default(pool_enum::kValid)
-    .add_enum("full", pool_enum::kFull)
-    .add_enum("valid", pool_enum::kValid)
-    .describe("Pooling convention to be applied.");
   }
 };
 
@@ -83,19 +78,12 @@ class QuantizedMaxPoolProp : public OperatorProperty {
         << "kernel size (" << param_.kernel[1]
         << ") exceeds input (" << dshape[3]
         << " padded to " << (dshape[3] + 2*param_.pad[1]) << ")";
-    if (param_.convention == pool_enum::kValid) {
-      oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) /
-                          param_.stride[0];
-      oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) /
-                          param_.stride[1];
-    } else {
-      oshape[2] = 1 + static_cast<int>(ceil(static_cast<float>(
-                          dshape[2] + 2 * param_.pad[0] -
-                          param_.kernel[0]) / param_.stride[0]));
-      oshape[3] = 1 + static_cast<int>(ceil(static_cast<float>(
-                          dshape[3] + 2 * param_.pad[1] -
-                          param_.kernel[1]) / param_.stride[1]));
-    }
+
+    // only support valid convention
+    oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) /
+                        param_.stride[0];
+    oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) /
+                        param_.stride[1];
 
     CHECK(shape_is_scalar(in_shape->at(1)));
     CHECK(shape_is_scalar(in_shape->at(2)));

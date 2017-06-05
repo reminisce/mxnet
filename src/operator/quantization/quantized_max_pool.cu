@@ -85,6 +85,7 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
     const TBlob& data = in_data[0];
     const TBlob& out  = out_data[0];
     TShape dshape = data.shape_;
+    TShape oshape = out.shape_;
     CUDNN_CALL(cudnnCreatePoolingDescriptor(&pool_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
@@ -98,10 +99,10 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
     CUDNN_CALL(cudnnSetTensor4dDescriptor(out_desc_,
                                           CUDNN_TENSOR_NCHW,
                                           dtype_,
-                                          dshape[0],
-                                          dshape[1],
-                                          dshape[2],
-                                          dshape[3]));
+                                          oshape[0],
+                                          oshape[1],
+                                          oshape[2],
+                                          oshape[3]));
     CUDNN_CALL(cudnnSetPooling2dDescriptor(
       pool_desc_,
       mode_,

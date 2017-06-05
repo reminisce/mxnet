@@ -4,6 +4,7 @@
  * \brief
  * \author Ziheng Jiang
 */
+#include <mxnet/op_attr_types.h>
 #include "./quantized_max_pool-inl.h"
 
 namespace mxnet {
@@ -69,6 +70,20 @@ height, width)*.
 .add_argument("min_range", "NDArray-or-Symbol", "")
 .add_argument("max_range", "NDArray-or-Symbol", "")
 .add_arguments(QuantizedMaxPoolParam::__FIELDS__());
+
+
+NNVM_REGISTER_OP(max_pool)
+.set_attr<FQuantizedOp>("FQuantizedOp", [](nnvm::NodePtr n) {
+    const NodeAttrs& attrs = n->attrs;
+    nnvm::NodePtr node = nnvm::Node::Create();
+    node->attrs.op = Op::Get("quantized_max_pool");
+    node->attrs.name = "quantized_" + attrs.name;
+    node->attrs.dict = attrs.dict;
+    if (node->op()->attr_parser != nullptr) {
+      node->op()->attr_parser(&(node->attrs));
+    }
+    return node;
+  });
 
 }  // namespace op
 }  // namespace mxnet
