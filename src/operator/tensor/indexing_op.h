@@ -910,7 +910,7 @@ void SparseRetainOpForwardEx(const nnvm::NodeAttrs& attrs,
   const TBlob input_idx = input_nd.aux_data(rowsparse::kIdx);
 
   NDArray output_nd = outputs[sr::kOut];
-  output_nd.CheckAndAlloc({mshadow::Shape2(idx_data.Size(), output_nd.shape()[1])});
+  output_nd.CheckAndAlloc({mshadow::Shape1(idx_data.Size())});
   TBlob output_data = output_nd.data();
   TBlob output_idx = output_nd.aux_data(rowsparse::kIdx);
 
@@ -952,10 +952,8 @@ void SparseRetainOpBackwardEx(const nnvm::NodeAttrs& attrs,
                               const std::vector<NDArray>& outputs) {
   CHECK_EQ(inputs.size(), 2U);
   CHECK_EQ(outputs.size(), 2U);
-  CHECK_EQ(req.size(), 2U);
+  CHECK_EQ(req.size(), 1U);
   CHECK_NE(req[sr::kArr], kWriteInplace);
-  CHECK_EQ(req[sr::kIdx], kNullOp)
-    << "sparse_retain backward does not support the gradient of the index array";
 
   CHECK_EQ(inputs[sr::kOut].storage_type(), kDefaultStorage)
     << "sparse_retain backward only takes default NDArray as ograd";
@@ -968,7 +966,7 @@ void SparseRetainOpBackwardEx(const nnvm::NodeAttrs& attrs,
   const TBlob idx_data = inputs[sr::kIdx].data();
 
   NDArray in_grad_nd = outputs[sr::kArr];
-  in_grad_nd.CheckAndAlloc({mshadow::Shape2(idx_data.Size(), out_grad_data.shape_[1])});
+  in_grad_nd.CheckAndAlloc({mshadow::Shape1(idx_data.Size())});
   TBlob in_grad_data = in_grad_nd.data();
   TBlob in_grad_idx = in_grad_nd.aux_data(rowsparse::kIdx);
 
