@@ -2,7 +2,7 @@ from __future__ import absolute_import
 
 import ctypes
 from .base import _LIB, string_types, numeric_types, check_call
-from .base import c_array, py_str, c_str, mx_real_t
+from .base import c_array, py_str, c_str, mx_real_t, mx_uint
 from .base import NDArrayHandle, ExecutorHandle, SymbolHandle
 from .symbol import Symbol
 from . import ndarray as nd
@@ -28,10 +28,20 @@ def quantize_params(sym, params):
             quantized_params[name] = params[name]
     return quantized_params
 
-def quantize_graph(sym, offline_params=False):
+def quantize_graph(sym, offline_params=False, ignore_symbols=None):
     out = SymbolHandle()
+    num_ignore = 0
+    ignore_handles = []
+    if ignore_symbols is not None:
+        assert isinstance(ignore_symbols, list)
+        num_ignore = len(ignore_symbols)
+        for s in ignore_symbols:
+            ignore_handles.append(s.handle)
+
     check_call(_LIB.MXQuantizeGraph(sym.handle,
                                     ctypes.byref(out),
-                                    ctypes.c_int(offline_params)))
+                                    ctypes.c_int(offline_params),
+                                    mx_uint(num_ignore),
+                                    c_array(SymbolHandle, ignore_handles)))
     return Symbol(out)
 
