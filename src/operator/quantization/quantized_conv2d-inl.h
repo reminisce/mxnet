@@ -21,6 +21,8 @@ struct QuantizedConv2DParam :
   TShape pad;
   uint32_t num_filter;
   bool no_bias;
+  uint64_t workspace;
+  int layout;
   DMLC_DECLARE_PARAMETER(QuantizedConv2DParam) {
     DMLC_DECLARE_FIELD(kernel);
     DMLC_DECLARE_FIELD(stride)
@@ -32,6 +34,14 @@ struct QuantizedConv2DParam :
     DMLC_DECLARE_FIELD(num_filter);
     DMLC_DECLARE_FIELD(no_bias)
     .set_default(true);
+    DMLC_DECLARE_FIELD(workspace).set_default(1024).set_range(0, 8192)
+    .describe("Maximum temperal workspace allowed for convolution (MB).");
+    DMLC_DECLARE_FIELD(layout)
+    .add_enum("NCHW", mshadow::kNCHW)
+    .add_enum("NHWC", mshadow::kNHWC)
+    .set_default(mshadow::kNCHW)
+    .describe("Set layout for input, output and weight. Empty for\n    "
+              "default layout: NCW for 1d, NCHW for 2d and NCDHW for 3d.");
   }
 };
 
@@ -76,22 +86,35 @@ class QuantizedConv2DProp : public OperatorProperty {
     CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape =  in_shape->at(0);
     CHECK_EQ(dshape.ndim(), 4U);
-    CHECK(dshape[1] % 4 == 0)
+
+    int N = -1, H = -1, W = -1, C = -1;
+    if (param_.layout == mshadow::kNCHW) {
+      N = 0, H = 2, W = 3, C = 1;
+    } else if (param_.layout == mshadow::kNHWC) {
+      N = 0, H = 1, W = 2, C = 3;
+    } else {
+      LOG(FATAL) << "not support other layout for now";
+    }
+    CHECK(dshape[C] % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
     CHECK(param_.num_filter % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
 
-    TShape fshape = Shape4(param_.num_filter, dshape[1], param_.kernel[0], param_.kernel[1]);
+    TShape fshape{1, 1, 1, 1};
+    fshape[N] = param_.num_filter;
+    fshape[H] = param_.kernel[0];
+    fshape[W] = param_.kernel[1];
+    fshape[C] = dshape[C];
     SHAPE_ASSIGN_CHECK(*in_shape, 1, fshape);
     for (int i = 2; i < 6; ++i) {
       SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
     }
 
     TShape oshape{1, 1, 1, 1};
-    oshape[0] = dshape[0];
-    oshape[1] = fshape[0];
-    oshape[2] = (AddPad(dshape[2], param_.pad[0]) - fshape[2]) / param_.stride[0] + 1;
-    oshape[3] = (AddPad(dshape[3], param_.pad[1]) - fshape[3]) / param_.stride[1] + 1;
+    oshape[N] = dshape[N];
+    oshape[C] = fshape[N];
+    oshape[H] = (AddPad(dshape[H], param_.pad[0]) - fshape[H]) / param_.stride[0] + 1;
+    oshape[W] = (AddPad(dshape[W], param_.pad[1]) - fshape[W]) / param_.stride[1] + 1;
 
     out_shape->clear();
     out_shape->push_back(oshape);

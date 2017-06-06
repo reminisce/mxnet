@@ -10,10 +10,12 @@
 #include "./dequantize-inl.h"
 #include "./quantized_relu-inl.h"
 #include "../tensor/broadcast_reduce_op.h"
+#include <unordered_set>
 
 namespace mxnet {
 namespace op {
 
+using nnvm::Symbol;
 using nnvm::Node;
 using nnvm::NodePtr;
 using nnvm::NodeEntry;
@@ -64,16 +66,22 @@ std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs) {
   return outputs;
 }
 
+inline bool NeedQuantize(NodePtr node, const std::unordered_set<NodePtr> ignore_nodes) {
+  static auto& quantized_op_map = Op::GetAttr<mxnet::FQuantizedOp>("FQuantizedOp");
+  return quantized_op_map.count(node->op()) && !ignore_nodes.count(node);
+}
+
 Graph QuantizeGraph(Graph &&src) {
   static auto& quantized_op_map = Op::GetAttr<mxnet::FQuantizedOp>("FQuantizedOp");
   static auto& need_shrink_map = Op::GetAttr<mxnet::TQuantizationNeedShrink>("TQuantizationNeedShrink");
   bool offline = src.GetAttr<int>("offline");
+  auto ignore_nodes = src.GetAttr<std::unordered_set<NodePtr>>("ignore_nodes");
 
   std::unordered_map<Node*, NodePtr> mirror_map;
   DFSVisit(src.outputs, [&](const NodePtr& node) {
 
     NodePtr new_node = Node::Create();
-    if (quantized_op_map.count(node->op())) {
+    if (NeedQuantize(node, ignore_nodes)) {
       auto fquantized_op = quantized_op_map[node->op()];
       new_node = fquantized_op(node);
 
@@ -82,7 +90,7 @@ Graph QuantizeGraph(Graph &&src) {
         NodePtr mirror_node = mirror_map.at(e.node.get());
         NodeEntry mirror_entry = NodeEntry{
           mirror_node, e.index, e.version};
-        if (!quantized_op_map.count(e.node->op()) &&
+        if (!NeedQuantize(e.node, ignore_nodes) &&
             (mirror_node->op() == nullptr ||
              mirror_node->op()->name != quantize_op_name)) {
           NodePtr quantize_node = InsertNode(quantize_op_name,
@@ -151,7 +159,7 @@ Graph QuantizeGraph(Graph &&src) {
         uint32_t max_index = num_outputs + 2 * e.index + 1;
 
         // if input node is quantized operator, add dequantize node
-        if (quantized_op_map.count(e.node->op())) {
+        if (NeedQuantize(e.node, ignore_nodes)) {
           NodePtr dequantize_node = CreateNode(dequantize_op_name,
             e.node->attrs.name + "_dequantize");
           dequantize_node->inputs.emplace_back(mirror_entry);

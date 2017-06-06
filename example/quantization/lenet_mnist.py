@@ -11,6 +11,7 @@ logger.setLevel(logging.DEBUG)
 
 no_bias = True
 batch_size = 32
+name = 'lenet_mnist'
 
 data = mx.symbol.Variable('data')
 conv1 = mx.symbol.Convolution(data=data, kernel=(5, 5), num_filter=20, no_bias=True)
@@ -57,8 +58,8 @@ lenet_model = mx.mod.Module(symbol=lenet, context=mx.gpu(0))
 #                 eval_metric='acc',
 #                 batch_end_callback = mx.callback.Speedometer(batch_size, 100),
 #                 num_epoch=10)
-# lenet_model.save_checkpoint('lenet1', 10)
-sym, arg_params, aux_params = mx.model.load_checkpoint('lenet1', 10)
+# lenet_model.save_checkpoint(name, 10)
+sym, arg_params, aux_params = mx.model.load_checkpoint(name, 10)
 lenet_model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
 lenet_model.set_params(arg_params=arg_params, aux_params=aux_params)
 
@@ -83,10 +84,3 @@ print('origin:')
 test(lenet)
 print('after quantization:')
 test(quantized_lenet)
-#
-# ctx = mx.gpu(0)
-# data   = test_iter.data[0][1][:32].copyto(ctx)
-# label  = test_iter.label[0][1][:32].copyto(ctx)
-# weight = params['fc1_weight'].copyto(ctx)
-
-
