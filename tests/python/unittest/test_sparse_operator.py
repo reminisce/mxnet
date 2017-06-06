@@ -1,8 +1,3 @@
-# pylint: skip-file
-import numpy as np
-import mxnet as mx
-import scipy.sparse as sp
-from numpy.testing import assert_allclose
 from mxnet.test_utils import *
 
 
@@ -181,13 +176,12 @@ def test_sparse_slice():
 
 
 def test_sparse_retain():
-    for num_rows in range(1, 40):
-        num_cols = 3
-        shape = (num_rows, num_cols)
+    for _ in range(10):
+        shape = rand_shape_2d()
+        num_rows = shape[0]
         rsp, _ = rand_sparse_ndarray(shape=shape, storage_type='row_sparse', density=0.5)
         length = np.random.randint(1, num_rows + 1)
-        import random
-        idx = random.sample(range(0, num_rows), length)
+        idx = random_sample(range(0, num_rows), length)
         idx.sort()
         dns = rsp.asnumpy()
         tensor_retained_expected = np.zeros(shape)

@@ -266,6 +266,19 @@ Examples::
 
 NNVM_REGISTER_OP(sparse_retain)
 .describe(R"code(pick rows specified by user input index array from a row sparse matrix
+and save them in the output sparse matrix.
+
+Example::
+
+  data = [[1, 2], [3, 4], [5, 6]]
+  indices = [0, 1, 3]
+  shape = (4, 2)
+  rsp_in = row_sparse(data, indices)
+  to_retain = [0, 3]
+  rsp_out = sparse_retain(rsp_in, to_retain)
+  rsp_out.values = [[1, 2], [5, 6]]
+  rsp_out.indices = [0, 3]
+
 )code" ADD_FILELINE)
 .set_num_inputs(2)
 .set_num_outputs(1)

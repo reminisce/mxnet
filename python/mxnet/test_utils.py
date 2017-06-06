@@ -67,6 +67,15 @@ def random_arrays(*shapes):
         return arrays[0]
     return arrays
 
+
+def random_sample(population, k):
+    """Return a k length list of the elements chosen from the population sequence."""
+    assert 0 <= k <= len(population)
+    population_copy = population[:]
+    np.random.shuffle(population_copy)
+    return population_copy[0:k]
+
+
 # TODO(haibin) also include types in arguments
 def rand_sparse_ndarray(shape, storage_type, density=None):
     """Generate a random sparse ndarray. Returns the ndarray, value(np) and indices(np) """
