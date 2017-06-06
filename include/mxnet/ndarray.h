@@ -115,44 +115,44 @@ class NDArray {
   }
   /*! \brief constructor for NDArray with storage type
    */
-  NDArray(const NDArrayStorageType storage_type, const TShape &shape, Context ctx,
+  NDArray(const NDArrayStorageType stype, const TShape &shape, Context ctx,
           bool delay_alloc = true, int dtype = mshadow::default_type_flag,
           std::vector<int> aux_types = {}, std::vector<TShape> aux_shapes = {},
           TShape storage_shape = TShape(mshadow::Shape1(0)))
       : shape_(shape), offset_(0), dtype_(dtype), entry_({nullptr, 0, 0}) {
       // Assign default aux types if not given
       if (aux_types.size() == 0) {
-        if (storage_type == kRowSparseStorage) {
+        if (stype == kRowSparseStorage) {
           aux_types = {ROW_SPARSE_IDX_TYPE};
-        } else if (storage_type == kCSRStorage) {
+        } else if (stype == kCSRStorage) {
           aux_types = {CSR_IND_PTR_TYPE, CSR_IDX_DTYPE};
         } else {
-          LOG(FATAL) << "Unknown storage type" << storage_type;
+          LOG(FATAL) << "Unknown storage type " << stype;
         }
       }
       // Assign default shapes if not given
       // unknown shapes are intialized as {0} such that Size() would return 0
       if (aux_shapes.size() == 0) {
-        if (storage_type == kRowSparseStorage) {
+        if (stype == kRowSparseStorage) {
           aux_shapes = {TShape(mshadow::Shape1(0))};
-        } else if (storage_type == kCSRStorage) {
+        } else if (stype == kCSRStorage) {
           // aux shapes for indptr and indices
           aux_shapes = {TShape(mshadow::Shape1(0)), TShape(mshadow::Shape1(0))};
         } else {
-          LOG(FATAL) << "Unknown storage type" << storage_type;
+          LOG(FATAL) << "Unknown storage type " << stype;
         }
       }
       if (storage_shape.Size() == 0) {
-        if (storage_type == kRowSparseStorage) {
+        if (stype == kRowSparseStorage) {
           storage_shape = shape;
           storage_shape[0] = aux_shapes[rowsparse::kIdx][0];
-        } else if (storage_type == kCSRStorage) {
+        } else if (stype == kCSRStorage) {
           storage_shape = aux_shapes[csr::kIdx];
         } else {
-          LOG(FATAL) << "Unknown storage type" << storage_type;
+          LOG(FATAL) << "Unknown storage type " << stype;
         }
       }
-      ptr_ = std::make_shared<Chunk>(storage_type, storage_shape, ctx, delay_alloc,
+      ptr_ = std::make_shared<Chunk>(stype, storage_shape, ctx, delay_alloc,
                                      dtype, aux_types, aux_shapes);
 #if MKL_EXPERIMENTAL == 1
       Mkl_mem_ = std::make_shared<MKLMemHolder>();
