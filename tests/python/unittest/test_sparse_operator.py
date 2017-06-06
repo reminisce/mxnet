@@ -5,6 +5,7 @@ import scipy.sparse as sp
 from numpy.testing import assert_allclose
 from mxnet.test_utils import *
 
+
 def check_elemwise_add_ex(lhs_stype, rhs_stype, shape, lhs_grad_stype=None, rhs_grad_stype=None):
     lhs = mx.symbol.Variable('lhs', storage_type=lhs_stype)
     rhs = mx.symbol.Variable('rhs', storage_type=rhs_stype)
@@ -68,6 +69,7 @@ def test_elemwise_add_ex_multiple_stages():
     assert_almost_equal(exec_test.outputs[0].asnumpy(), sp_np1 + sp_np2 + ds_np)
     exec_test.backward(out_grads=exec_test.outputs)
     assert_almost_equal(arr_grads[0].asnumpy(), arr_grads[1].asnumpy())
+
 
 # TODO(haibin) also add test for backward pass. Check if exception is thrown
 def test_cast_storage_ex():
@@ -133,6 +135,7 @@ def test_sparse_dot():
     test_dot_csr_dns(lhs_shape, (lhs_shape[1], rnd.randint(1, 10)), False)
     test_dot_csr_dns(lhs_shape, (lhs_shape[0], rnd.randint(1, 10)), True)
 
+
 def test_sparse_embedding():
     in_dim = 10
     out_dim = 4
@@ -160,6 +163,7 @@ def test_sparse_embedding():
     exe_test.backward([grad])
     assert_almost_equal(grad_map["embed_weight"].asnumpy(), np.dot(np_onehot.T, np_grad), atol=1e-5)
 
+
 def test_sparse_slice():
     def check_csr_slice(shape, slice_input):
         storage_type = 'csr'
@@ -174,6 +178,32 @@ def test_sparse_slice():
     shape = (rnd.randint(7, 15), rnd.randint(1, 10))
     check_csr_slice(shape, True)
     check_csr_slice(shape, False)
+
+
+def test_sparse_retain():
+    for num_rows in range(1, 40):
+        num_cols = 3
+        shape = (num_rows, num_cols)
+        rsp, _ = rand_sparse_ndarray(shape=shape, storage_type='row_sparse', density=0.5)
+        length = np.random.randint(1, num_rows + 1)
+        import random
+        idx = random.sample(range(0, num_rows), length)
+        idx.sort()
+        dns = rsp.asnumpy()
+        tensor_retained_expected = np.zeros(shape)
+        for i in idx:
+            tensor_retained_expected[i][:] = dns[i]
+        indices = mx.nd.array(idx)
+        rsp_retained = mx.nd.sparse_retain(rsp, indices=indices)
+        assert same(tensor_retained_expected, rsp_retained.asnumpy())
+
+        # check numeric gradient
+        data = mx.symbol.Variable('data')
+        idx = mx.symbol.Variable('indices')
+        sym = mx.sym.sparse_retain(data=data, indices=idx)
+        check_numeric_gradient(sym, [rsp, indices], grad_nodes=['data'], grad_stype_dict={'data': 'row_sparse'})
+
+
 
 if __name__ == '__main__':
     import nose

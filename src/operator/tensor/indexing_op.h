@@ -844,8 +844,9 @@ inline bool SparseRetainBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
                                                  std::vector<int> *in_attrs,
                                                  std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 2U);
-  CHECK_EQ(out_attrs->size(), 1U);
-  out_attrs->at(sr::kOut) = kRowSparseStorage;
+  CHECK_EQ(out_attrs->size(), 2U);
+  out_attrs->at(sr::kArr) = kRowSparseStorage;
+  out_attrs->at(sr::kIdx) = kDefaultStorage;
   return true;
 }
 
@@ -952,8 +953,10 @@ void SparseRetainOpBackwardEx(const nnvm::NodeAttrs& attrs,
                               const std::vector<NDArray>& outputs) {
   CHECK_EQ(inputs.size(), 2U);
   CHECK_EQ(outputs.size(), 2U);
-  CHECK_EQ(req.size(), 1U);
+  CHECK_EQ(req.size(), 2U);
   CHECK_NE(req[sr::kArr], kWriteInplace);
+  CHECK_EQ(req[sr::kIdx], kNullOp)
+    << "sparse_retain does not support calculating gradients of indices";
 
   CHECK_EQ(inputs[sr::kOut].storage_type(), kDefaultStorage)
     << "sparse_retain backward only takes default NDArray as ograd";

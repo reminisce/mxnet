@@ -16,7 +16,7 @@ import numpy.testing as npt
 import numpy.random as rnd
 import mxnet as mx
 from .context import Context
-from .ndarray import array
+from .ndarray import array, _STORAGE_TYPE_STR_TO_ID
 from .symbol import Symbol
 try:
     import requests
@@ -457,7 +457,8 @@ def numeric_grad(executor, location, aux_states=None, eps=1e-4, use_forward_trai
 
 
 def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-3, rtol=1e-2,
-                           atol=None, grad_nodes=None, use_forward_train=True, ctx=None):
+                           atol=None, grad_nodes=None, use_forward_train=True, ctx=None,
+                           grad_stype_dict=None):
     """Verify an operation by checking backward pass via finite difference method.
 
     Based on Theano's `theano.gradient.verify_grad` [1]
@@ -474,7 +475,7 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-3, rto
         - if type is dict of str -> numpy.ndarray
             maps the name of arguments to the corresponding numpy.ndarray.
         *In either case, value of all the arguments must be provided.*
-    aux_states : ist or tuple or dict, optional
+    aux_states : list or tuple or dict, optional
         The auxiliary states required when generating the executor for the symbol.
     numeric_eps : float, optional
         Delta for the finite difference method that approximates the gradient.
@@ -486,6 +487,8 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-3, rto
         Whether to use is_train=True when computing the finite-difference.
     ctx : Context, optional
         Check the gradient computation on the specified device.
+    grad_stype_dict : dict of str->str, optional
+        Storage type dictionary for gradient ndarrays.
     References
     ---------
     ..[1] https://github.com/Theano/Theano/blob/master/theano/gradient.py
@@ -509,7 +512,7 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-3, rto
     location_npy = {k:v.asnumpy() for k, v in location.items()}
     aux_states = _parse_aux_states(sym=sym, aux_states=aux_states, ctx=ctx)
     if aux_states is not None:
-        aux_states_npy = {k:v.asnumpy() for k, v in aux_states.items()}
+        aux_states_npy = {k: v.asnumpy() for k, v in aux_states.items()}
     else:
         aux_states_npy = None
     if grad_nodes is None:
@@ -536,6 +539,11 @@ def check_numeric_gradient(sym, location, aux_states=None, numeric_eps=1e-3, rto
                          + [("__random_proj", _rng.normal(0, 0.01, size=out_shape[0]))])
 
     args_grad = {k: mx.nd.array(v, ctx=ctx) for k, v in args_grad_npy.items()}
+    if grad_stype_dict is not None:
+        assert isinstance(grad_stype_dict, dict), "grad_stype_dict must be a dict"
+        for k, v in grad_stype_dict.items():
+            if k in args_grad and v in _STORAGE_TYPE_STR_TO_ID and v != 'default':
+                args_grad[k] = mx.nd.cast_storage(args_grad[k], storage_type=v)
 
     executor = out.bind(ctx, grad_req=grad_req,
                         args=location, args_grad=args_grad, aux_states=aux_states)
