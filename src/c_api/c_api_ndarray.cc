@@ -266,7 +266,6 @@ void SetDependency(std::vector<engine::VarHandle> *p_read_vars,
     for (const auto& req : tmp_resource[op](attrs)) {
       switch (req.type) {
        case ResourceRequest::kTempSpace:
-        LOG(INFO) << "ntmp: " << ntmp;
         ++ntmp;
        case ResourceRequest::kRandom:
         requested.push_back(ResourceManager::Get()->Request(ctx, req));

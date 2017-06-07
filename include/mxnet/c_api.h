@@ -1189,7 +1189,9 @@ MXNET_DLL int MXSymbolInferType(SymbolHandle sym,
 
 MXNET_DLL int MXQuantizeGraph(SymbolHandle sym,
                               SymbolHandle *ret_sym,
-                              int offline);
+                              int offline,
+                              mx_uint num_ignore,
+                              SymbolHandle *ignore_symbols);
 
 //--------------------------------------------
 // Part 4: Executor interface
