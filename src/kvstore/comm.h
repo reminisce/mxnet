@@ -121,7 +121,7 @@ class CommCPU : public Comm {
   }
 
   template<typename RandomIt>
-  void ParallelSort(RandomIt first, RandomIt last, size_t num_threads) {
+  static void ParallelSort(RandomIt first, RandomIt last, size_t num_threads) {
     ParallelSort(first, last, num_threads,
                  std::less<typename std::iterator_traits<RandomIt>::value_type>());
   }
@@ -163,7 +163,7 @@ class CommCPU : public Comm {
   }
 
   template<typename DType, typename IType>
-  void ReduceSumCPUExImpl(const std::vector<NDArray>& in,
+  void ReduceSumCPUExImpl(const std::vector<NDArray>& nds,
                           const std::vector<IType>& uniq_row_idx,
                           const int nthreads, NDArray* out) {
 #pragma omp parallel num_threads(nthreads)
@@ -180,7 +180,7 @@ class CommCPU : public Comm {
         for (size_t i = row_block_start; i < row_block_end; ++i) {
           out_indices[i] = uniq_row_idx[i];
         }
-        for (const auto& nd : in) {
+        for (const auto& nd : nds) {
           if (nd.storage_initialized()) {
             const auto nd_indices = nd.aux_data(rowsparse::kIdx).FlatTo1D<cpu, IType>();
             const auto nd_values = nd.data().FlatTo2D<cpu, DType>();
