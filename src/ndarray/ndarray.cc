@@ -758,7 +758,7 @@ void NDArray::Save(dmlc::Stream *strm) const {
       TBlob save_data = nd_cpu.aux_data(i);
       // save aux_data
       CHECK(save_data.CheckContiguous());
-      size_t aux_type_size= mshadow::mshadow_sizeof(aux_type(i));
+      size_t aux_type_size = mshadow::mshadow_sizeof(aux_type(i));
       strm->Write(save_data.dptr_, aux_type_size * save_data.Size());
     }
   }
@@ -872,7 +872,7 @@ bool NDArray::Load(dmlc::Stream *strm) {
   size_t type_size = mshadow::mshadow_sizeof(type_flag);
   size_t nread = type_size * load_data.Size();
   if (strm->Read(load_data.dptr_, nread) != nread) return false;
-  
+
   // load aux_data
   if (num_aux_data > 0) {
     for (int i = 0; i < num_aux_data; ++i) {
