@@ -12,6 +12,7 @@
 #include <thread>
 #include <dmlc/omp.h>
 #include "mxnet/ndarray.h"
+#include "../common/utils.h"
 namespace mxnet {
 namespace kvstore {
 /**
@@ -155,33 +156,7 @@ class CommCPU : public Comm {
     }
   }
 
-  template<typename RandomIt>
-  static void ParallelSort(RandomIt first, RandomIt last, size_t num_threads) {
-    ParallelSort(first, last, num_threads,
-                 std::less<typename std::iterator_traits<RandomIt>::value_type>());
-  }
-
-  template<typename RandomIt, typename Compare>
-  static void ParallelSort(RandomIt first, RandomIt last, size_t num_threads, Compare comp) {
-    const auto num = std::distance(first, last);
-    size_t grainsize = std::max(num / num_threads + 5, static_cast<size_t>(1024*16));
-    ParallelSortHelper(first, num, grainsize, comp);
-  }
-
  private:
-
-  template<typename RandomIt, typename Compare>
-  static void ParallelSortHelper(RandomIt first, size_t len,
-                                 size_t grainsize, const Compare& comp) {
-    if (len < grainsize) {
-      std::sort(first, first+len, comp);
-    } else {
-      std::thread thr(ParallelSortHelper<RandomIt, Compare>, first, len/2, grainsize, comp);
-      ParallelSortHelper(first+len/2, len - len/2, grainsize, comp);
-      thr.join();
-      std::inplace_merge(first, first+len/2, first+len, comp);
-    }
-  }
 
   // reduce sum into val[0]
   inline void ReduceSumCPU(const std::vector<NDArray> &in_data) {
@@ -356,7 +331,7 @@ class CommCPU : public Comm {
       }
     }
 
-    ParallelSort(uniq_row_idx->begin(), uniq_row_idx->end(), nthreads);
+    common::ParallelSort(uniq_row_idx->begin(), uniq_row_idx->end(), nthreads);
     auto it = std::unique(uniq_row_idx->begin(), uniq_row_idx->end());
     uniq_row_idx->resize(std::distance(uniq_row_idx->begin(), it));
   }
