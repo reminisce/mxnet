@@ -67,6 +67,8 @@ class CommCPU : public Comm {
   CommCPU() {
     nthread_reduction_ = dmlc::GetEnv("MXNET_KVSTORE_REDUCTION_NTHREADS", 4);
     bigarray_bound_ = dmlc::GetEnv("MXNET_KVSTORE_BIGARRAY_BOUND", 1000 * 1000);
+    // TODO(junwu) delete the following data member, now for benchmark only
+    is_serial_push_ = dmlc::GetEnv("MXNET_KVSTORE_SERIAL_PUSH", 0);
   }
   virtual ~CommCPU() { }
 
@@ -132,7 +134,7 @@ class CommCPU : public Comm {
       auto result = buf.merged;
       Engine::Get()->PushSync([reduce, result, this](RunContext rctx) {
           NDArray out = result;
-          ReduceSumCPUEx(reduce, &out);
+          is_serial_push_? ReduceSumCPUExSerial(reduce, &out) : ReduceSumCPUExParallel(reduce, &out);
         }, Context::CPU(), const_vars, {result.var()},
         FnProperty::kCPUPrioritized, priority, PROFILER_MESSAGE("KVStoreReduce"));
     }
@@ -195,12 +197,9 @@ class CommCPU : public Comm {
     });
   }
 
-#define KVSTORE_PUSH_SERIAL 0
-
-#if KVSTORE_PUSH_SERIAL == 1
   // serial implementation of reduce sum for row sparse NDArray.
   // TODO(haibin) use openmp kernel to parallelize the summation
-  inline void ReduceSumCPUEx(const std::vector<NDArray> &in, NDArray *out) {
+  inline void ReduceSumCPUExSerial(const std::vector<NDArray> &in, NDArray *out) {
     using namespace rowsparse;
     using namespace mshadow;
     auto stype = out->storage_type();
@@ -270,13 +269,12 @@ class CommCPU : public Comm {
       });
     });
   }
-#endif  // KVSTORE_PUSH_SERIAL
 
   template<typename DType, typename IType>
   void ReduceSumCPUExImpl(const std::vector<NDArray>& nds,
                           const std::vector<IType>& uniq_row_idx,
-                          const int nthreads, NDArray* out) {
-#pragma omp parallel num_threads(nthreads)
+                          NDArray* out) {
+#pragma omp parallel num_threads(nthread_reduction_)
     {
       const size_t nnr = uniq_row_idx.size();
       const int num_threads = omp_get_num_threads();
@@ -363,8 +361,7 @@ class CommCPU : public Comm {
     uniq_row_idx->resize(std::distance(uniq_row_idx->begin(), it));
   }
 
-#if KVSTORE_PUSH_SERIAL == 0
-  void ReduceSumCPUEx(const std::vector<NDArray>& nds, NDArray* out) {
+  void ReduceSumCPUExParallel(const std::vector<NDArray>& nds, NDArray* out) {
     if (nds.empty()) return;
     using namespace rowsparse;
     CHECK_EQ(out->storage_type(), kRowSparseStorage)
@@ -377,13 +374,10 @@ class CommCPU : public Comm {
         GetUniqueRspRowIdx(nds, &uniq_row_idx);
         out->CheckAndAlloc({mshadow::Shape1(uniq_row_idx.size())});
         out->data().FlatTo2D<cpu, DType>() = static_cast<DType>(0);
-        ReduceSumCPUExImpl<DType, IType>(nds, uniq_row_idx, omp_get_max_threads(), out);
+        ReduceSumCPUExImpl<DType, IType>(nds, uniq_row_idx, out);
       });
     });
   }
-#endif  // KVSTORE_PUSH_SERIAL
-
-#undef KVSTORE_PUSH_SERIAL
 
   template<typename DType>
   inline static void ReduceSumCPU(
@@ -450,6 +444,7 @@ class CommCPU : public Comm {
   std::unordered_map<int, BufferEntry> merge_buf_;
   size_t bigarray_bound_;
   int nthread_reduction_;
+  bool is_serial_push_;
 };
 
 /**
