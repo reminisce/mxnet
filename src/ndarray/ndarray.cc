@@ -925,7 +925,8 @@ void NDArray::Load(dmlc::Stream* fi,
 }
 
 NDArray NDArray::Copy(Context ctx) const {
-  NDArray ret(shape(), ctx, true, dtype_);
+  NDArray ret(storage_type(), shape(), ctx, true, dtype_,
+              ptr_->aux_types, ptr_->aux_shapes, storage_shape());
   CopyFromTo(*this, &ret);
   return ret;
 }
