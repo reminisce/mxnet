@@ -30,6 +30,7 @@
 #include "../elemwise_op_common.h"
 #include "../mshadow_op.h"
 #include "../mxnet_op.h"
+#include "./quantization_utils.h"
 
 namespace mxnet {
 namespace op {
@@ -55,6 +56,19 @@ struct dequantize {
   }
 };
 
+// keep zero-center
+struct dequantize_v2 {
+  template<typename DstDType, typename SrcDType>
+  MSHADOW_XINLINE static void Map(int i, DstDType *out, const SrcDType *in,
+                                  const float *imin_range, const float *imax_range) {
+    // out[i] = QuantizeToFloat(in[i], *imin_range, *imax_range);
+    float real_range = MaxAbs(*imax_range, *imin_range);
+    float quantized_range = MinAbs(MinValue<SrcDType>(), MaxValue<SrcDType>());
+    float scale = real_range / quantized_range;
+    out[i] = in[i] * scale;
+  }
+};
+
 template<typename xpu>
 void DequantizeCompute(const nnvm::NodeAttrs& attrs,
                      const OpContext& ctx,
@@ -65,18 +79,13 @@ void DequantizeCompute(const nnvm::NodeAttrs& attrs,
   using namespace mxnet_op;
   Stream<xpu> *s = ctx.get_stream<xpu>();
 
-  // for now, only supports dequantize from float to uint8
+  const DequantizeParam& param = nnvm::get<DequantizeParam>(attrs.parsed);
+  // for now, only supports dequantize from int8 to float
+  typedef int8_t SrcDType;
   typedef float   DstDType;
-  typedef uint8_t SrcDType;
-  double min_limit = static_cast<double>(std::numeric_limits<SrcDType>::min());
-  double max_limit = static_cast<double>(std::numeric_limits<SrcDType>::max());
-  float half_range = !std::is_signed<SrcDType>::value
-    ? 0.0f
-    : (max_limit - min_limit + 1) / 2.0;
 
-  Kernel<dequantize, xpu>::Launch(s, outputs[0].Size(), outputs[0].dptr<DstDType>(),
-    inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>(),
-    min_limit, max_limit, half_range);
+  Kernel<dequantize_v2, xpu>::Launch(s, outputs[0].Size(), outputs[0].dptr<DstDType>(),
+    inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>());
 }
 
 inline bool DequantizeShape(const nnvm::NodeAttrs& attrs,

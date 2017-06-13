@@ -6,12 +6,29 @@
 #include <limits>
 #include "./quantize_down_and_shrink_range-inl.h"
 #include "./quantization_utils.h"
-
 #include "../tensor/broadcast_reduce_op.h"
-#include "../tensor/broadcast_reduce-inl.h"
 
 namespace mxnet {
 namespace op {
+
+template<typename Reducer, typename xpu, typename SrcExp, typename DType>
+static void ReduceToAssign(mshadow::Tensor<xpu, 2, DType> out, const OpReqType req, const SrcExp &src) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  Shape<2> src_shape = ShapeCheck<2, SrcExp>::Check(src);
+  if (src_shape == out.shape_) {
+    ASSIGN_DISPATCH(out, req, F<mshadow_op::identity>(src));
+  } else if (src_shape[0] == out.shape_[0]) {
+    ASSIGN_DISPATCH(out.FlatTo1D(), req, (reduce_except_dim<0, Reducer>(src)));
+  } else if (src_shape[1] == out.shape_[1]) {
+    ASSIGN_DISPATCH(out.FlatTo1D(), req, (reduce_except_dim<1, Reducer>(src)));
+  } else {
+    ASSIGN_DISPATCH(out.FlatTo1D(), req,
+      (reduce_except_dim<1, Reducer>(reshape(src,
+      Shape2(src_shape.Size(), 1)))));
+  }
+}
+
 
 template<typename Reducer, typename DType, typename T1, typename T2, typename TStream>
 static void Reduce(T1 out, T2 data, TStream *s) {
@@ -63,15 +80,17 @@ void QuantizeDownAndShrinkRangeComputeGPU(
       inputs[1].dptr<float>(), inputs[2].dptr<float>());
 
   Kernel<RequantizeManyInNewRangeStruct, gpu>::Launch(s, inputs[0].Size(),
-      outputs[0].dptr<DstDType>(), inputs[0].dptr<SrcDType>(),
-      inputs[1].dptr<float>(), inputs[2].dptr<float>(),
+      outputs[0].dptr<DstDType>(), outputs[1].dptr<float>(), outputs[2].dptr<float>(),
+      inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>(),
       actual_min_float.dptr_, actual_max_float.dptr_);
-  Tensor<gpu, 1, float> omin_range = outputs[1].FlatTo1D<gpu, float>(s);
-  Tensor<gpu, 1, float> omax_range = outputs[2].FlatTo1D<gpu, float>(s);
-  ASSIGN_DISPATCH(omin_range, req[1],
-    mshadow::expr::F<mshadow_op::identity>(inputs[1].FlatTo1D<gpu, float>(s)));
-  ASSIGN_DISPATCH(omax_range, req[2],
-    mshadow::expr::F<mshadow_op::identity>(inputs[2].FlatTo1D<gpu, float>(s)));
+
+  // TODO
+  // Tensor<gpu, 1, float> omin_range = outputs[1].FlatTo1D<gpu, float>(s);
+  // Tensor<gpu, 1, float> omax_range = outputs[2].FlatTo1D<gpu, float>(s);
+  // ASSIGN_DISPATCH(omin_range, req[1],
+  //   mshadow::expr::F<mshadow_op::identity>(inputs[1].FlatTo1D<gpu, float>(s)));
+  // ASSIGN_DISPATCH(omax_range, req[2],
+  //   mshadow::expr::F<mshadow_op::identity>(inputs[2].FlatTo1D<gpu, float>(s)));
 }
 
 NNVM_REGISTER_OP(quantize_down_and_shrink_range)

@@ -6,10 +6,6 @@
 #include <nnvm/graph.h>
 #include <nnvm/pass.h>
 #include <mxnet/op_attr_types.h>
-#include "./quantize-inl.h"
-#include "./dequantize-inl.h"
-#include "./quantized_relu-inl.h"
-#include "../tensor/broadcast_reduce_op.h"
 #include <unordered_set>
 
 namespace mxnet {
@@ -95,15 +91,15 @@ Graph QuantizeGraph(Graph &&src) {
              mirror_node->op()->name != quantize_op_name)) {
           NodePtr quantize_node = InsertNode(quantize_op_name,
             e.node->attrs.name + "_quantize", new_node, mirror_entry);
-          quantize_node->attrs.parsed = std::move(QuantizeParam());
+          quantize_node->op()->attr_parser(&(quantize_node->attrs));
 
           NodePtr min_node = InsertNode("min",
               e.node->attrs.name + "_min", quantize_node, mirror_entry);
-          min_node->attrs.parsed = std::move(ReduceAxesParam());
+          min_node->op()->attr_parser(&(min_node->attrs));
 
           NodePtr max_node = InsertNode("max",
               e.node->attrs.name + "_max", quantize_node, mirror_entry);
-          max_node->attrs.parsed = std::move(ReduceAxesParam());
+          max_node->op()->attr_parser(&(max_node->attrs));
 
           mirror_map[e.node.get()] = std::move(quantize_node);
         } else {
@@ -165,7 +161,7 @@ Graph QuantizeGraph(Graph &&src) {
           dequantize_node->inputs.emplace_back(mirror_entry);
           dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, min_index, 0});
           dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, max_index, 0});
-          dequantize_node->attrs.parsed = std::move(DequantizeParam());
+          dequantize_node->op()->attr_parser(&(dequantize_node->attrs));
 
           new_node->inputs.emplace_back(NodeEntry{dequantize_node, 0, 0});
           mirror_map[e.node.get()] = std::move(dequantize_node);
@@ -191,7 +187,7 @@ Graph QuantizeGraph(Graph &&src) {
       dequantize_node->inputs.emplace_back(mirror_entry);
       dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, min_index, 0});
       dequantize_node->inputs.emplace_back(NodeEntry{mirror_node, max_index, 0});
-      dequantize_node->attrs.parsed = std::move(DequantizeParam());
+      dequantize_node->op()->attr_parser(&(dequantize_node->attrs));
       outputs.emplace_back(NodeEntry{dequantize_node, 0, 0});
     } else {
       outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});

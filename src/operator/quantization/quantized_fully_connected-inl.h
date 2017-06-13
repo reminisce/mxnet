@@ -64,6 +64,8 @@ class QuantizedFullyConnectedProp : public OperatorProperty {
 
     CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape = in_shape->at(0);
+    CHECK_EQ(dshape[1] % 4, 0)
+      << "for 8bit fully connected, dshape[1] must be multiple of 4";
 
     TShape wshape = Shape2(param_.num_hidden, dshape[1]);
     SHAPE_ASSIGN_CHECK(*in_shape, 1, wshape);
