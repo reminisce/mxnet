@@ -19,15 +19,25 @@ struct QuantizedMaxPoolParam : public dmlc::Parameter<QuantizedMaxPoolParam> {
   TShape kernel;
   TShape stride;
   TShape pad;
+  int layout;
   DMLC_DECLARE_PARAMETER(QuantizedMaxPoolParam) {
     DMLC_DECLARE_FIELD(kernel)
     .enforce_nonzero()
     .describe("pooling kernel size: (y, x) or (d, y, x)");
-    DMLC_DECLARE_FIELD(stride).set_default(TShape())
+
+    DMLC_DECLARE_FIELD(stride)
+    .set_default(TShape())
     .enforce_nonzero()
     .describe("stride: for pooling (y, x) or (d, y, x)");
-    DMLC_DECLARE_FIELD(pad).set_default(TShape())
+
+    DMLC_DECLARE_FIELD(pad)
+    .set_default(TShape())
     .describe("pad for pooling: (y, x) or (d, y, x)");
+
+    DMLC_DECLARE_FIELD(layout)
+    .set_default(mshadow::kNCHW)
+    .add_enum("NCHW", mshadow::kNCHW)
+    .add_enum("NHWC", mshadow::kNHWC);
   }
 };
 
@@ -63,27 +73,39 @@ class QuantizedMaxPoolProp : public OperatorProperty {
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
     CHECK_EQ(in_shape->size(), 3U);
+    CHECK(!shape_is_none(in_shape->at(0)));
     const TShape &dshape = (*in_shape)[0];
-    if (dshape.ndim() ==  0) return false;
     CHECK_EQ(dshape.ndim(), 4U)
-      << "Pooling: Input data should be 4D in (batch, channel, y, x)";
-    TShape oshape = dshape;
+        << "MaxPool: Input data should be 4D in "
+        << "(batch, channel, y, x)";
+    int N = -1, H = -1, W = -1, C = -1;
+    if (param_.layout == mshadow::kNCHW) {
+      N = 0, H = 2, W = 3, C = 1;
+    } else if (param_.layout == mshadow::kNHWC) {
+      N = 0, H = 1, W = 2, C = 3;
+    } else {
+      LOG(FATAL) << "not support other layout for now";
+    }
+
+    TShape oshape(4);
     CHECK_EQ(param_.kernel.ndim(), 2);
 
-    CHECK(param_.kernel[0] <= dshape[2] + 2 * param_.pad[0])
+    CHECK(param_.kernel[0] <= dshape[H] + 2 * param_.pad[0])
         << "kernel size (" << param_.kernel[0]
-        << ") exceeds input (" << dshape[2]
-        << " padded to " << (dshape[2] + 2*param_.pad[0]) << ")";
-    CHECK(param_.kernel[1] <= dshape[3] + 2 * param_.pad[1])
+        << ") exceeds input (" << dshape[H]
+        << " padded to " << (dshape[H] + 2*param_.pad[0]) << ")";
+    CHECK(param_.kernel[1] <= dshape[W] + 2 * param_.pad[1])
         << "kernel size (" << param_.kernel[1]
-        << ") exceeds input (" << dshape[3]
-        << " padded to " << (dshape[3] + 2*param_.pad[1]) << ")";
+        << ") exceeds input (" << dshape[W]
+        << " padded to " << (dshape[W] + 2*param_.pad[1]) << ")";
 
     // only support valid convention
-    oshape[2] = 1 + (dshape[2] + 2 * param_.pad[0] - param_.kernel[0]) /
-                        param_.stride[0];
-    oshape[3] = 1 + (dshape[3] + 2 * param_.pad[1] - param_.kernel[1]) /
-                        param_.stride[1];
+    oshape[N] = dshape[N];
+    oshape[C] = dshape[C];
+    oshape[H] = 1 + (dshape[H] + 2 * param_.pad[0] - param_.kernel[0]) /
+        param_.stride[0];
+    oshape[W] = 1 + (dshape[W] + 2 * param_.pad[1] - param_.kernel[1]) /
+        param_.stride[1];
 
     CHECK(shape_is_scalar(in_shape->at(1)));
     CHECK(shape_is_scalar(in_shape->at(2)));

@@ -83,14 +83,6 @@ void QuantizeDownAndShrinkRangeComputeGPU(
       outputs[0].dptr<DstDType>(), outputs[1].dptr<float>(), outputs[2].dptr<float>(),
       inputs[0].dptr<SrcDType>(), inputs[1].dptr<float>(), inputs[2].dptr<float>(),
       actual_min_float.dptr_, actual_max_float.dptr_);
-
-  // TODO
-  // Tensor<gpu, 1, float> omin_range = outputs[1].FlatTo1D<gpu, float>(s);
-  // Tensor<gpu, 1, float> omax_range = outputs[2].FlatTo1D<gpu, float>(s);
-  // ASSIGN_DISPATCH(omin_range, req[1],
-  //   mshadow::expr::F<mshadow_op::identity>(inputs[1].FlatTo1D<gpu, float>(s)));
-  // ASSIGN_DISPATCH(omax_range, req[2],
-  //   mshadow::expr::F<mshadow_op::identity>(inputs[2].FlatTo1D<gpu, float>(s)));
 }
 
 NNVM_REGISTER_OP(quantize_down_and_shrink_range)

@@ -16,6 +16,13 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
  public:
   explicit QuantizedMaxPoolCuDNNOp(QuantizedMaxPoolParam p) {
     param_ = p;
+    if (param_.layout == mshadow::kNCHW) {
+      N = 0, H = 2, W = 3, C = 1;
+      format_ = CUDNN_TENSOR_NCHW;
+    } else if (param_.layout == mshadow::kNHWC) {
+      N = 0, H = 1, W = 2, C = 3;
+      format_ = CUDNN_TENSOR_NHWC;
+    }
     init_cudnn_ = false;
     alpha_ = 1.0f;
     beta_  = 0.0f;
@@ -90,19 +97,19 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
     CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc_));
     CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
     CUDNN_CALL(cudnnSetTensor4dDescriptor(in_desc_,
-                                          CUDNN_TENSOR_NCHW,
+                                          format_,
                                           dtype_,
-                                          dshape[0],
-                                          dshape[1],
-                                          dshape[2],
-                                          dshape[3]));
+                                          dshape[N],
+                                          dshape[C],
+                                          dshape[H],
+                                          dshape[W]));
     CUDNN_CALL(cudnnSetTensor4dDescriptor(out_desc_,
-                                          CUDNN_TENSOR_NCHW,
+                                          format_,
                                           dtype_,
-                                          oshape[0],
-                                          oshape[1],
-                                          oshape[2],
-                                          oshape[3]));
+                                          oshape[N],
+                                          oshape[C],
+                                          oshape[H],
+                                          oshape[W]));
     CUDNN_CALL(cudnnSetPooling2dDescriptor(
       pool_desc_,
       mode_,
@@ -115,10 +122,12 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
       param_.stride[1]));
   }
   bool init_cudnn_;
+  uint32_t N, H, W, C;
   float alpha_;
   float beta_;
-  cudnnDataType_t dtype_;
   cudnnHandle_t handle_;
+  cudnnDataType_t dtype_;
+  cudnnTensorFormat_t format_;
   cudnnPoolingMode_t mode_;
   cudnnTensorDescriptor_t in_desc_;
   cudnnTensorDescriptor_t out_desc_;
