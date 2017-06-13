@@ -17,8 +17,14 @@ class CuDNNMaxPoolOp : public Operator {
  public:
   explicit CuDNNMaxPoolOp(MaxPoolParam param) {
     param_ = param;
+    if (param_.layout == mshadow::kNCHW) {
+      N = 0, H = 2, W = 3, C = 1;
+      format_ = CUDNN_TENSOR_NCHW;
+    } else if (param_.layout == mshadow::kNHWC) {
+      N = 0, H = 1, W = 2, C = 3;
+      format_ = CUDNN_TENSOR_NHWC;
+    }
     init_cudnn_ = false;
-    // TODO(xxx): fp16
     dtype_ = mshadow::DataType<DType>::kCudnnFlag;
     mode_ = CUDNN_POOLING_MAX;
   }
@@ -115,24 +121,23 @@ class CuDNNMaxPoolOp : public Operator {
       // 2d conv
       Tensor<gpu, 4, DType> data = in_data[pool_enum::kData].get<gpu, 4, DType>(s);
       Tensor<gpu, 4, DType> out = out_data[pool_enum::kOut].get<gpu, 4, DType>(s);
-      mshadow::Shape<4> dshape = data.shape_;
       CHECK_EQ(cudnnCreatePoolingDescriptor(&max_pool_desc_), CUDNN_STATUS_SUCCESS);
       CHECK_EQ(cudnnCreateTensorDescriptor(&in_desc_), CUDNN_STATUS_SUCCESS);
       CHECK_EQ(cudnnCreateTensorDescriptor(&out_desc_), CUDNN_STATUS_SUCCESS);
       CHECK_EQ(cudnnSetTensor4dDescriptor(in_desc_,
-                                          CUDNN_TENSOR_NCHW,
+                                          format_,
                                           dtype_,
-                                          data.shape_[0],
-                                          data.shape_[1],
-                                          data.shape_[2],
-                                          data.shape_[3]), CUDNN_STATUS_SUCCESS);
+                                          data.shape_[N],
+                                          data.shape_[C],
+                                          data.shape_[H],
+                                          data.shape_[W]), CUDNN_STATUS_SUCCESS);
       CHECK_EQ(cudnnSetTensor4dDescriptor(out_desc_,
-                                          CUDNN_TENSOR_NCHW,
+                                          format_,
                                           dtype_,
-                                          out.shape_[0],
-                                          out.shape_[1],
-                                          out.shape_[2],
-                                          out.shape_[3]), CUDNN_STATUS_SUCCESS);
+                                          out.shape_[N],
+                                          out.shape_[C],
+                                          out.shape_[H],
+                                          out.shape_[W]), CUDNN_STATUS_SUCCESS);
       CHECK_EQ(cudnnSetPooling2dDescriptor(max_pool_desc_,
                                            mode_,
                                            nan_prop_,
@@ -145,9 +150,11 @@ class CuDNNMaxPoolOp : public Operator {
                                            CUDNN_STATUS_SUCCESS);
     }
   }
+  uint32_t N, H, W, C;
   bool init_cudnn_;
-  cudnnDataType_t dtype_;
   cudnnHandle_t handle_;
+  cudnnDataType_t dtype_;
+  cudnnTensorFormat_t format_;
   cudnnPoolingMode_t mode_;
   cudnnTensorDescriptor_t in_desc_;
   cudnnTensorDescriptor_t out_desc_;
