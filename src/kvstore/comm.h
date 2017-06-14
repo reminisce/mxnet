@@ -281,7 +281,7 @@ class CommCPU : public Comm {
                  irow < row_block_end && row_idx_ptr != nd_indices_end;) {
               if (out_indices[irow] == *row_idx_ptr) {
                 auto out_value_cur_row = out_values[irow];
-                const auto offset = std::distance(nd_indices_start, row_idx_ptr);
+                const auto offset = row_idx_ptr - nd_indices_start;
                 auto nd_value_cur_row = nd_values[offset];
                 for (size_t j = 0; j < nd_value_cur_row.shape_[0]; ++j) {
                   out_value_cur_row[j] += nd_value_cur_row[j];
@@ -333,7 +333,7 @@ class CommCPU : public Comm {
 
     common::ParallelSort(uniq_row_idx->begin(), uniq_row_idx->end(), nthreads);
     auto it = std::unique(uniq_row_idx->begin(), uniq_row_idx->end());
-    uniq_row_idx->resize(std::distance(uniq_row_idx->begin(), it));
+    uniq_row_idx->resize(it - uniq_row_idx->begin());
   }
 
   void ReduceSumCPUExParallel(const std::vector<NDArray>& nds, NDArray* out) {
