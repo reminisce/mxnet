@@ -14,6 +14,7 @@
 #include <random>
 #include <thread>
 #include <algorithm>
+#include <functional>
 #endif  // DMLC_USE_CXX11
 
 #include <dmlc/logging.h>

@@ -3,6 +3,7 @@
  */
 #ifndef MXNET_KVSTORE_COMM_H_
 #define MXNET_KVSTORE_COMM_H_
+#include <dmlc/omp.h>
 #include <string>
 #include <algorithm>
 #include <utility>
@@ -10,7 +11,6 @@
 #include <vector>
 #include <tuple>
 #include <thread>
-#include <dmlc/omp.h>
 #include "mxnet/ndarray.h"
 #include "../common/utils.h"
 namespace mxnet {
@@ -135,7 +135,8 @@ class CommCPU : public Comm {
       auto result = buf.merged;
       Engine::Get()->PushSync([reduce, result, this](RunContext rctx) {
           NDArray out = result;
-          is_serial_push_? ReduceSumCPUExSerial(reduce, &out) : ReduceSumCPUExParallel(reduce, &out);
+          is_serial_push_?
+            ReduceSumCPUExSerial(reduce, &out) : ReduceSumCPUExParallel(reduce, &out);
         }, Context::CPU(), const_vars, {result.var()},
         FnProperty::kCPUPrioritized, priority, PROFILER_MESSAGE("KVStoreReduce"));
     }
@@ -157,7 +158,6 @@ class CommCPU : public Comm {
   }
 
  private:
-
   // reduce sum into val[0]
   inline void ReduceSumCPU(const std::vector<NDArray> &in_data) {
     MSHADOW_TYPE_SWITCH(in_data[0].dtype(), DType, {
@@ -273,7 +273,7 @@ class CommCPU : public Comm {
             const IType* row_idx_ptr = std::lower_bound(nd_indices_start, nd_indices_end,
                                                         out_indices[row_block_start]);
             // skip this nd if all of its row indices are smaller than out_indices[row_block_start]
-            // or current row block is not covered by [*row_idx_ptr, nd_indices_end). 
+            // or current row block is not covered by [*row_idx_ptr, nd_indices_end).
             if (nd_indices_end == row_idx_ptr || *row_idx_ptr > out_indices[row_block_end-1]) {
               continue;
             }
