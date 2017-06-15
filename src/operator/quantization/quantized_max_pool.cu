@@ -139,9 +139,7 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
 template<>
 Operator *CreateOp<gpu>(QuantizedMaxPoolParam param, int dtype) {
   Operator *op = NULL;
-  MSHADOW_TYPE_SWITCH(dtype, DType, {
-    op = new QuantizedMaxPoolCuDNNOp<DType>(param);
-  });
+  op = new QuantizedMaxPoolCuDNNOp<int8_t>(param);
   return op;
 }
 

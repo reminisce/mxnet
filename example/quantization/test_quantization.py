@@ -15,11 +15,11 @@ def test_quantize():
 
 
 def test_quantize1():
-    min0 = nd.array([-1.0])
-    max0 = nd.array([1.0])
-    a_ = nd.array([-1.0, -0.9999, -0.5, -0.0001, 0, 0.0001, 0.5, 0.9999, 1.0])
+    min0 = nd.array([-1.0], ctx=ctx)
+    max0 = nd.array([1.0], ctx=ctx)
+    a_ = nd.array([-1.0, -0.9999, -0.5, -0.0001, 0, 0.0001, 0.5, 0.9999, 1.0], ctx=ctx)
     qa, min1, max1 = mx.contrib.nd.quantize(a_, min0, max0)
-    a  = nd.array([-127, -127, -64, 0, 0, 0, 64, 127, 127])
+    a  = nd.array([-127, -127, -64, 0, 0, 0, 64, 127, 127], ctx=ctx)
     assert same(a.asnumpy(), qa.asnumpy())
 
 
@@ -31,9 +31,9 @@ def test_dequantize1():
     N = 5
     min_range = 1.0
     max_range = 1.0
-    min0 = nd.array([min_range])
-    max0 = nd.array([max_range])
-    a_ = nd.array([-128, -127, -64, -63, 1, 0, 1, 63, 64, 127], dtype=dtype)
+    min0 = nd.array([min_range], ctx=ctx)
+    max0 = nd.array([max_range], ctx=ctx)
+    a_ = nd.array([-128, -127, -64, -63, 1, 0, 1, 63, 64, 127], dtype=dtype, ctx=ctx)
     da = mx.contrib.nd.dequantize(a_, min0, max0)
     a = a_.asnumpy() * (max(abs(min_range), abs(max_range)) / 127)
     same(da.asnumpy(), a)

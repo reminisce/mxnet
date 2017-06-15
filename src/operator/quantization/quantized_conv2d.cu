@@ -217,16 +217,6 @@ class QuantizedConv2DCuDNNOp : public Operator {
   uint32_t N, H, W, C;
   float alpha_ = 1.0f;
   float beta_ = 0.0f;
-
-  cudnnDataType_t convertToCuDNNDataType(int dtype) {
-    cudnnDataType_t converted = CUDNN_DATA_FLOAT;
-    // The following will always assign to `converted` or throw an exception.
-    MSHADOW_TYPE_SWITCH(dtype, mxDType, {
-      converted = mshadow::DataType<mxDType>::kCudnnFlag;
-    })
-    return converted;
-  }
-
 };  // class QuantizedReluCuDNNOp
 
 

@@ -11,35 +11,26 @@
 namespace mxnet {
 namespace op {
 
-template<typename Reducer, typename xpu, typename SrcExp, typename DType>
-static void ReduceToAssign(mshadow::Tensor<xpu, 2, DType> out, const OpReqType req, const SrcExp &src) {
-  using namespace mshadow;
-  using namespace mshadow::expr;
-  Shape<2> src_shape = ShapeCheck<2, SrcExp>::Check(src);
-  if (src_shape == out.shape_) {
-    ASSIGN_DISPATCH(out, req, F<mshadow_op::identity>(src));
-  } else if (src_shape[0] == out.shape_[0]) {
-    ASSIGN_DISPATCH(out.FlatTo1D(), req, (reduce_except_dim<0, Reducer>(src)));
-  } else if (src_shape[1] == out.shape_[1]) {
-    ASSIGN_DISPATCH(out.FlatTo1D(), req, (reduce_except_dim<1, Reducer>(src)));
-  } else {
-    ASSIGN_DISPATCH(out.FlatTo1D(), req,
-      (reduce_except_dim<1, Reducer>(reshape(src,
-      Shape2(src_shape.Size(), 1)))));
-  }
-}
-
-
-template<typename Reducer, typename DType, typename T1, typename T2, typename TStream>
-static void Reduce(T1 out, T2 data, TStream *s) {
+template<typename Reducer, typename DType>
+static void Reduce(const OpContext& ctx,
+                   TBlob out, TBlob data,
+                   int req_cnt) {
+  mshadow::Stream<gpu> *s = ctx.get_stream<gpu>();
   TShape src_shape, dst_shape;
   BroadcastReduceShapeCompact(data.shape_, out.shape_, &src_shape, &dst_shape);
+  constexpr int NDim = 2;
+  CHECK_EQ(dst_shape.ndim(), NDim);
+  CHECK_EQ(src_shape.ndim(), NDim);
 
-  CHECK_EQ(dst_shape.ndim(), 2);
-  CHECK_EQ(src_shape.ndim(), 2);
-  mshadow::Tensor<gpu, 2, DType>  tout(out.dptr_,  dst_shape.get<2>(), s);
-  mshadow::Tensor<gpu, 2, DType> tdata(data.dptr_, src_shape.get<2>(), s);
-  ReduceToAssign<Reducer>(tout, kWriteTo, tdata);
+  const TBlob in_data  = data.reshape(src_shape);
+  const TBlob out_data =  out.reshape(dst_shape);
+
+  size_t workspace_size = broadcast::ReduceWorkspaceSize<NDim, DType>(
+    s, out_data, kWriteTo, in_data);
+  mshadow::Tensor<gpu, 1, char> workspace =
+    ctx.requested[req_cnt].get_space_typed<gpu, 1, char>(mshadow::Shape1(workspace_size), s);
+  broadcast::Reduce<Reducer, NDim, DType, mshadow::op::identity>(
+    s, out_data, kWriteTo, workspace, in_data);
 }
 
 void QuantizeDownAndShrinkRangeComputeGPU(
@@ -53,19 +44,20 @@ void QuantizeDownAndShrinkRangeComputeGPU(
   typedef int32_t SrcDType;
   typedef int8_t  DstDType;
   Stream<gpu> *s = ctx.get_stream<gpu>();
+  int req_cnt = 0;
 
   size_t space_size = 2 * sizeof(float) + 2 * sizeof(SrcDType);
   Tensor<gpu, 1, char> space =
-    ctx.requested[0].get_space_typed<gpu, 1, char>(Shape1(space_size), s);
+    ctx.requested[req_cnt++].get_space_typed<gpu, 1, char>(Shape1(space_size), s);
 
-  Tensor<gpu, 1, SrcDType> actual_min_quantized(
-    reinterpret_cast<SrcDType*>(space.dptr_ + 8), Shape1(1), s);
-  Tensor<gpu, 1, SrcDType> actual_max_quantized(
-    reinterpret_cast<SrcDType*>(space.dptr_ + 8) + 1, Shape1(1), s);
+  TBlob actual_min_quantized(
+    reinterpret_cast<SrcDType*>(space.dptr_ + 8), Shape1(1), gpu::kDevMask);
+  TBlob actual_max_quantized(
+    reinterpret_cast<SrcDType*>(space.dptr_ + 8) + 1, Shape1(1), gpu::kDevMask);
 
-  Tensor<gpu, 2, SrcDType> data = inputs[0].FlatTo2D<gpu, SrcDType>(s);
-  Reduce<red::minimum, SrcDType>(actual_min_quantized, data, s);
-  Reduce<red::maximum, SrcDType>(actual_max_quantized, data, s);
+  Reduce<red::minimum, SrcDType>(ctx, actual_min_quantized, inputs[0], req_cnt++);
+  Reduce<red::maximum, SrcDType>(ctx, actual_max_quantized, inputs[0], req_cnt++);
+
 
   Tensor<gpu, 1, float> actual_min_float(
     reinterpret_cast<float*>(space.dptr_), Shape1(1), s);
@@ -73,10 +65,10 @@ void QuantizeDownAndShrinkRangeComputeGPU(
     reinterpret_cast<float*>(space.dptr_) + 1, Shape1(1), s);
 
   Kernel<QuantizedToFloatStruct, gpu>::Launch(s, 1,
-      actual_min_float.dptr_, actual_min_quantized.dptr_,
+      actual_min_float.dptr_, actual_min_quantized.dptr<SrcDType>(),
       inputs[1].dptr<float>(), inputs[2].dptr<float>());
   Kernel<QuantizedToFloatStruct, gpu>::Launch(s, 1,
-      actual_max_float.dptr_, actual_max_quantized.dptr_,
+      actual_max_float.dptr_, actual_max_quantized.dptr<SrcDType>(),
       inputs[1].dptr<float>(), inputs[2].dptr<float>());
 
   Kernel<RequantizeManyInNewRangeStruct, gpu>::Launch(s, inputs[0].Size(),

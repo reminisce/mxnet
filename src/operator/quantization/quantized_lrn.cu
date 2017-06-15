@@ -100,9 +100,7 @@ class QuantizedLRNCuDNNOp : public Operator {
 template<>
 Operator* CreateOp<gpu>(QuantizedLRNParam param, int dtype) {
   Operator *op = NULL;
-  MSHADOW_TYPE_SWITCH(dtype, DType, {
-    op = new QuantizedLRNCuDNNOp<DType>(param);
-  })
+  op = new QuantizedLRNCuDNNOp<int8_t>(param);
   return op;
 }
 
