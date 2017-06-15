@@ -15,6 +15,7 @@ import sys as _sys
 
 # import operator
 import numpy as np
+import mxnet as mx
 from .base import _LIB, numeric_types
 from .base import c_array, py_str, mx_real_t, c_str
 from .base import mx_uint, NDArrayHandle, check_call, OpHandle
@@ -309,10 +310,9 @@ class SparseNDArray(NDArray):
         >>> y.dtype
         <type 'numpy.int32'>
         """
-        res = zeros(self.storage_type, self.shape, ctx=self.context, dtype=dtype)
+        res = mx.nd.zeros(shape=self.shape, ctx=self.context, dtype=dtype, storage_type=self.storage_type)
         self.copyto(res)
         return res
-
 
     def copyto(self, other):
         """Copies the value of this array to another array.
@@ -432,6 +432,7 @@ class RowSparseNDArray(SparseNDArray):
         """
         return self._aux_data(0)
 
+
 def _prepare_src_array(src, dtype, default_dtype):
     if isinstance(src, NDArray):
         dtype = src.dtype if dtype is None else dtype
@@ -443,6 +444,7 @@ def _prepare_src_array(src, dtype, default_dtype):
             except:
                 raise TypeError('values must be array like object')
     return src, dtype
+
 
 def csr(values, indptr, indices, shape, ctx=None, dtype=None, indptr_type=None, indices_type=None):
     """Creates a 2D array with compressed sparse row format.
@@ -504,6 +506,7 @@ def csr(values, indptr, indices, shape, ctx=None, dtype=None, indptr_type=None, 
     indices_ref[:] = indices
     return result
 
+
 def row_sparse(values, indices, shape, ctx=None, dtype=None, indices_type=None):
     """Creates a row sparse array with a set of tensor slices at given indices.
 
@@ -550,6 +553,7 @@ def row_sparse(values, indices, shape, ctx=None, dtype=None, indices_type=None):
     indices_ref[:] = indices
     return result
 
+
 def to_dense(source):
     """ Return a dense array representation of this SparseNDArray.
 
@@ -560,47 +564,49 @@ def to_dense(source):
     """
     return ndarray.cast_storage(source, storage_type='default')
 
-def zeros(storage_type, shape, ctx=None, dtype=None, aux_types=None, **kwargs):
-    """Return a new array of given shape and type, filled with zeros.
 
-    Parameters
-    ----------
-    shape : int or tuple of int
-        The shape of the empty array
-    storage_type: string
-        The storage type of the empty array, such as 'row_sparse', 'csr', etc
-    ctx : Context, optional
-        An optional device context (default is the current default context)
-    dtype : str or numpy.dtype, optional
-        An optional value type (default is `float32`)
-    aux_types: list of numpy.dtype, optional
-        An optional type for the aux data for SparseNDArray (default values depends
-        on the storage type)
+# def _zeros_sparse_ndarray(storage_type, shape, ctx=None, dtype=None, aux_types=None, **kwargs):
+#     """Return a new array of given shape and type, filled with zeros.
+#
+#     Parameters
+#     ----------
+#     shape : int or tuple of int
+#         The shape of the empty array
+#     storage_type: string
+#         The storage type of the empty array, such as 'row_sparse', 'csr', etc
+#     ctx : Context, optional
+#         An optional device context (default is the current default context)
+#     dtype : str or numpy.dtype, optional
+#         An optional value type (default is `float32`)
+#     aux_types: list of numpy.dtype, optional
+#         An optional type for the aux data for SparseNDArray (default values depends
+#         on the storage type)
+#
+#     Returns
+#     -------
+#     SparseNDArray
+#         A created array
+#     Examples
+#     --------
+#     >>> mx.sparse_nd.zeros('csr', (1,2), mx.gpu(0))
+#     <SparseNDArray 1x2 @gpu(0)>
+#     >>> mx.sparse_nd.zeros('row_sparse', (1,2), mx.gpu(0), 'float16').asnumpy()
+#     array([[ 0.,  0.]], dtype=float16)
+#     """
+#     if storage_type == 'default':
+#         return ndarray.zeros(shape, ctx=ctx, dtype=dtype, **kwargs)
+#     if ctx is None:
+#         ctx = Context.default_ctx
+#     dtype = mx_real_t if dtype is None else dtype
+#     if aux_types is None:
+#         if storage_type == 'row_sparse' or storage_type == 'csr':
+#             aux_types = _STORAGE_AUX_TYPES[storage_type]
+#         else:
+#             raise Exception("unknown storage type")
+#     assert(len(aux_types) == len(_STORAGE_AUX_TYPES[storage_type]))
+#     out = nd_utils._ndarray_cls(_new_alloc_handle(storage_type, shape, ctx, True, dtype, aux_types))
+#     return _internal._zeros(shape=shape, ctx=ctx, dtype=dtype, out=out, **kwargs)
 
-    Returns
-    -------
-    SparseNDArray
-        A created array
-    Examples
-    --------
-    >>> mx.sparse_nd.zeros('csr', (1,2), mx.gpu(0))
-    <SparseNDArray 1x2 @gpu(0)>
-    >>> mx.sparse_nd.zeros('row_sparse', (1,2), mx.gpu(0), 'float16').asnumpy()
-    array([[ 0.,  0.]], dtype=float16)
-    """
-    if storage_type == 'default':
-        return ndarray.zeros(shape, ctx=ctx, dtype=dtype, **kwargs)
-    if ctx is None:
-        ctx = Context.default_ctx
-    dtype = mx_real_t if dtype is None else dtype
-    if aux_types is None:
-        if storage_type == 'row_sparse' or storage_type == 'csr':
-            aux_types = _STORAGE_AUX_TYPES[storage_type]
-        else:
-            raise Exception("unknown storage type")
-    assert(len(aux_types) == len(_STORAGE_AUX_TYPES[storage_type]))
-    out = _ndarray_cls(_new_alloc_handle(storage_type, shape, ctx, True, dtype, aux_types))
-    return _internal._zeros(shape=shape, ctx=ctx, dtype=dtype, out=out, **kwargs)
 
 def _ndarray_cls(handle, writable=True):
     stype = _storage_type(handle)

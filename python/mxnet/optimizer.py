@@ -2,9 +2,10 @@
 import math
 import pickle
 import logging
-from .ndarray import NDArray, zeros, clip, sqrt, sign
+from .ndarray import NDArray, clip, sqrt, sign
 from .ndarray import sgd_update, sgd_mom_update, adam_update, rmsprop_update, rmspropalex_update
-from .sparse_ndarray import zeros as sparse_zeros
+from .ndarray_utils import zeros
+from .ndarray_utils import zeros as sparse_zeros
 from .random import normal
 
 
