@@ -64,7 +64,7 @@ def test_sparse_nd_elementwise_fallback():
 def test_sparse_nd_zeros():
     def check_sparse_nd_zeros(stype, shape):
         zero = mx.nd.zeros(shape)
-        sparse_zero = mx.nd.zeros(shape=shape, storage_type='row_sparse')
+        sparse_zero = mx.nd.zeros(shape=shape, storage_type=stype)
         assert_almost_equal(sparse_zero.asnumpy(), zero.asnumpy())
 
     shape = rand_shape_2d()

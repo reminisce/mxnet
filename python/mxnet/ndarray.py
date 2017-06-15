@@ -18,7 +18,7 @@ import sys as _sys
 
 import operator
 import numpy as np
-from .base import _LIB, string_types, numeric_types
+from .base import _LIB, numeric_types
 from .base import c_array, py_str, c_str, mx_real_t, _Null  # pylint: disable=unused-import
 from .base import mx_uint, NDArrayHandle, check_call
 from .base import ctypes2buffer

@@ -5,8 +5,8 @@ import logging
 from .ndarray import NDArray, clip, sqrt, sign
 from .ndarray import sgd_update, sgd_mom_update, adam_update, rmsprop_update, rmspropalex_update
 from .ndarray_utils import zeros
-from .ndarray_utils import zeros as sparse_zeros
 from .random import normal
+import mxnet as mx
 
 
 class Optimizer(object):
@@ -334,8 +334,8 @@ class SGD(Optimizer):
         if self.momentum == 0.0:
             return None
         else:
-            return sparse_zeros(weight.storage_type, weight.shape,
-                                weight.context, dtype=weight.dtype)
+            return mx.nd.zeros(shape=weight.shape, ctx=weight.context,
+                               dtype=weight.dtype, storage_type=weight.storage_type)
 
     def update(self, index, weight, grad, state):
         assert(isinstance(weight, NDArray))
