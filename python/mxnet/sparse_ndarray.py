@@ -17,14 +17,14 @@ import sys as _sys
 import numpy as np
 import mxnet as mx
 from .base import _LIB, numeric_types
-from .base import c_array, py_str, mx_real_t, c_str
-from .base import mx_uint, NDArrayHandle, check_call, OpHandle
+from .base import c_array, mx_real_t
+from .base import mx_uint, NDArrayHandle, check_call
 from .context import Context
 from . import _ndarray_internal as _internal
 from . import ndarray
 from .ndarray import _DTYPE_NP_TO_MX, _DTYPE_MX_TO_NP
 from .ndarray import _STORAGE_TYPE_STR_TO_ID
-from .ndarray import NDArray, _storage_type, _make_ndarray_function
+from .ndarray import NDArray, _storage_type
 
 # Use different verison of SymbolBase
 # When possible, use cython to speedup part of computation.
@@ -310,7 +310,8 @@ class SparseNDArray(NDArray):
         >>> y.dtype
         <type 'numpy.int32'>
         """
-        res = mx.nd.zeros(shape=self.shape, ctx=self.context, dtype=dtype, storage_type=self.storage_type)
+        res = mx.nd.zeros(shape=self.shape, ctx=self.context,
+                          dtype=dtype, storage_type=self.storage_type)
         self.copyto(res)
         return res
 

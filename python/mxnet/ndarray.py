@@ -18,8 +18,8 @@ import sys as _sys
 
 import operator
 import numpy as np
-from .base import _LIB, numeric_types
-from .base import c_array, py_str, c_str, mx_real_t, _Null  # pylint: disable=unused-import
+from .base import _LIB, numeric_types, OpHandle, c_str
+from .base import c_array, py_str, mx_real_t, _Null  # pylint: disable=unused-import
 from .base import mx_uint, NDArrayHandle, check_call
 from .base import ctypes2buffer
 from .context import Context
@@ -2320,6 +2320,38 @@ def %s(%s):
     ndarray_function.__doc__ = doc_str
     ndarray_function.__module__ = 'mxnet.ndarray'
     return ndarray_function
+
+
+# pylint: enable=too-many-locals, invalid-name
+def _init_ndarray_module_backend(root_namespace):
+    """List and add all the ndarray functions to current module."""
+    plist = ctypes.POINTER(ctypes.c_char_p)()
+    size = ctypes.c_uint()
+
+    check_call(_LIB.MXListAllOpNames(ctypes.byref(size),
+                                     ctypes.byref(plist)))
+    op_names = []
+    for i in range(size.value):
+        op_names.append(py_str(plist[i]))
+
+    module_obj = _sys.modules["%s.ndarray" % root_namespace]
+    module_internal = _sys.modules["%s._ndarray_internal" % root_namespace]
+    module_contrib = _sys.modules["%s.contrib.ndarray" % root_namespace]
+    for name in op_names:
+        hdl = OpHandle()
+        check_call(_LIB.NNGetOpHandle(c_str(name), ctypes.byref(hdl)))
+        function = _make_ndarray_function(hdl, name)
+        if function.__name__.startswith('_contrib_'):
+            function.__name__ = function.__name__[9:]
+            function.__module__ = 'mxnet.contrib.ndarray'
+            setattr(module_contrib, function.__name__, function)
+        elif function.__name__.startswith('_'):
+            setattr(module_internal, function.__name__, function)
+        else:
+            setattr(module_obj, function.__name__, function)
+
+# register backend operators in mx.nd
+_init_ndarray_module_backend("mxnet")
 
 # from .base import add_fileline_to_docstring
 # add_fileline_to_docstring(__name__)

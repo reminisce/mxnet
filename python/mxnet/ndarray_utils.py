@@ -1,12 +1,14 @@
+# coding: utf-8
+"""Utility functions for NDArray and SparseNDArray."""
 import ctypes
+import sys as _sys
 
 from mxnet import Context
-from mxnet.base import mx_real_t, _LIB, check_call, py_str, c_str, string_types, mx_uint, NDArrayHandle, \
-    c_array, OpHandle
-from mxnet.ndarray import NDArray, _make_ndarray_function
+from mxnet.base import mx_real_t, _LIB, check_call, py_str, c_str, string_types, mx_uint,\
+    NDArrayHandle, c_array
+from mxnet.ndarray import NDArray
 from mxnet.sparse_ndarray import _STORAGE_AUX_TYPES, _new_alloc_handle, _ndarray_cls
 from . import _ndarray_internal as _internal
-import sys as _sys
 
 
 def _zeros_ndarray(shape, ctx=None, dtype=None, **kwargs):
@@ -127,7 +129,8 @@ def load(fname):
     else:
         assert out_name_size.value == out_size.value
         return dict(
-            (py_str(names[i]), _ndarray_cls(NDArrayHandle(handles[i]))) for i in range(out_size.value))
+            (py_str(names[i]), _ndarray_cls(NDArrayHandle(handles[i])))
+            for i in range(out_size.value))
 
 
 def save(fname, data):
@@ -189,39 +192,7 @@ def _init_ndarray_module_frontend(function, root_namespace, module_name):
     setattr(module_obj, function.__name__, function)
 
 
-# pylint: enable=too-many-locals, invalid-name
-def _init_ndarray_module_backend(root_namespace):
-    """List and add all the ndarray functions to current module."""
-    plist = ctypes.POINTER(ctypes.c_char_p)()
-    size = ctypes.c_uint()
-
-    check_call(_LIB.MXListAllOpNames(ctypes.byref(size),
-                                     ctypes.byref(plist)))
-    op_names = []
-    for i in range(size.value):
-        op_names.append(py_str(plist[i]))
-
-    module_obj = _sys.modules["%s.ndarray" % root_namespace]
-    module_internal = _sys.modules["%s._ndarray_internal" % root_namespace]
-    module_contrib = _sys.modules["%s.contrib.ndarray" % root_namespace]
-    for name in op_names:
-        hdl = OpHandle()
-        check_call(_LIB.NNGetOpHandle(c_str(name), ctypes.byref(hdl)))
-        function = _make_ndarray_function(hdl, name)
-        if function.__name__.startswith('_contrib_'):
-            function.__name__ = function.__name__[9:]
-            function.__module__ = 'mxnet.contrib.ndarray'
-            setattr(module_contrib, function.__name__, function)
-        elif function.__name__.startswith('_'):
-            setattr(module_internal, function.__name__, function)
-        else:
-            setattr(module_obj, function.__name__, function)
-
-
 # register the following front end functions in mx.nd
 _init_ndarray_module_frontend(zeros, "mxnet", "ndarray")
 _init_ndarray_module_frontend(load, "mxnet", "ndarray")
 _init_ndarray_module_frontend(save, "mxnet", "ndarray")
-
-# register backend operators in mx.nd
-_init_ndarray_module_backend("mxnet")
