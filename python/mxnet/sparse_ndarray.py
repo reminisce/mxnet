@@ -565,49 +565,6 @@ def to_dense(source):
     return ndarray.cast_storage(source, storage_type='default')
 
 
-# def _zeros_sparse_ndarray(storage_type, shape, ctx=None, dtype=None, aux_types=None, **kwargs):
-#     """Return a new array of given shape and type, filled with zeros.
-#
-#     Parameters
-#     ----------
-#     shape : int or tuple of int
-#         The shape of the empty array
-#     storage_type: string
-#         The storage type of the empty array, such as 'row_sparse', 'csr', etc
-#     ctx : Context, optional
-#         An optional device context (default is the current default context)
-#     dtype : str or numpy.dtype, optional
-#         An optional value type (default is `float32`)
-#     aux_types: list of numpy.dtype, optional
-#         An optional type for the aux data for SparseNDArray (default values depends
-#         on the storage type)
-#
-#     Returns
-#     -------
-#     SparseNDArray
-#         A created array
-#     Examples
-#     --------
-#     >>> mx.sparse_nd.zeros('csr', (1,2), mx.gpu(0))
-#     <SparseNDArray 1x2 @gpu(0)>
-#     >>> mx.sparse_nd.zeros('row_sparse', (1,2), mx.gpu(0), 'float16').asnumpy()
-#     array([[ 0.,  0.]], dtype=float16)
-#     """
-#     if storage_type == 'default':
-#         return ndarray.zeros(shape, ctx=ctx, dtype=dtype, **kwargs)
-#     if ctx is None:
-#         ctx = Context.default_ctx
-#     dtype = mx_real_t if dtype is None else dtype
-#     if aux_types is None:
-#         if storage_type == 'row_sparse' or storage_type == 'csr':
-#             aux_types = _STORAGE_AUX_TYPES[storage_type]
-#         else:
-#             raise Exception("unknown storage type")
-#     assert(len(aux_types) == len(_STORAGE_AUX_TYPES[storage_type]))
-#     out = nd_utils._ndarray_cls(_new_alloc_handle(storage_type, shape, ctx, True, dtype, aux_types))
-#     return _internal._zeros(shape=shape, ctx=ctx, dtype=dtype, out=out, **kwargs)
-
-
 def _ndarray_cls(handle, writable=True):
     stype = _storage_type(handle)
     if stype == 'default':
@@ -618,6 +575,7 @@ def _ndarray_cls(handle, writable=True):
         return RowSparseNDArray(handle, writable=writable)
     else:
         raise Exception("unknown storage type")
+
 
 # pylint: enable=too-many-locals, invalid-name
 def _init_ndarray_module(ndarray_class, root_namespace):
