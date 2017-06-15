@@ -4,7 +4,6 @@ import pickle
 import logging
 from .ndarray import NDArray, clip, sqrt, sign
 from .ndarray import sgd_update, sgd_mom_update, adam_update, rmsprop_update, rmspropalex_update
-from .ndarray_utils import zeros
 from .random import normal
 import mxnet as mx
 
@@ -513,8 +512,8 @@ class Adam(Optimizer):
         self.epsilon = epsilon
 
     def create_state(self, index, weight):
-        return (zeros(weight.shape, weight.context, dtype=weight.dtype),  # mean
-                zeros(weight.shape, weight.context, dtype=weight.dtype))  # variance
+        return (mx.nd.zeros(weight.shape, weight.context, dtype=weight.dtype),  # mean
+                mx.nd.zeros(weight.shape, weight.context, dtype=weight.dtype))  # variance
 
     def update(self, index, weight, grad, state):
         assert(isinstance(weight, NDArray))
@@ -619,11 +618,11 @@ class RMSProp(Optimizer):
     def create_state(self, index, weight):
         if self.centered:
             return (
-                zeros(weight.shape, weight.context),  # n
-                zeros(weight.shape, weight.context),  # g
-                zeros(weight.shape, weight.context))  # delta
+                mx.nd.zeros(weight.shape, weight.context),  # n
+                mx.nd.zeros(weight.shape, weight.context),  # g
+                mx.nd.zeros(weight.shape, weight.context))  # delta
         else:
-            return (zeros(weight.shape, weight.context), )  # n
+            return (mx.nd.zeros(weight.shape, weight.context), )  # n
 
     def update(self, index, weight, grad, state):
         assert(isinstance(weight, NDArray))

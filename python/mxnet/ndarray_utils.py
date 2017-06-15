@@ -1,11 +1,10 @@
 import ctypes
 
 from mxnet import Context
-from mxnet._ctypes.ndarray import _set_ndarray_class
-from mxnet.base import mx_real_t, _LIB, check_call, py_str, OpHandle, c_str, string_types, mx_uint, NDArrayHandle, \
+from mxnet.base import mx_real_t, _LIB, check_call, py_str, c_str, string_types, mx_uint, NDArrayHandle, \
     c_array
-from mxnet.ndarray import _storage_type, NDArray, _make_ndarray_function
-from mxnet.sparse_ndarray import CSRNDArray, RowSparseNDArray, _STORAGE_AUX_TYPES, _new_alloc_handle, _ndarray_cls
+from mxnet.ndarray import NDArray
+from mxnet.sparse_ndarray import _STORAGE_AUX_TYPES, _new_alloc_handle, _ndarray_cls
 from . import _ndarray_internal as _internal
 import sys as _sys
 

@@ -5,8 +5,7 @@ from mxnet.test_utils import *
 from numpy.testing import assert_allclose
 import numpy.random as rnd
 
-from mxnet.sparse_ndarray import RowSparseNDArray, CSRNDArray
-from mxnet.ndarray_utils import _ndarray_cls
+from mxnet.sparse_ndarray import RowSparseNDArray, CSRNDArray, _ndarray_cls
 
 
 def assert_fcompex(f, *args, **kwargs):
