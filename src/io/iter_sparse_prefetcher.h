@@ -22,6 +22,7 @@
 #include "./inst_vector.h"
 #include "./image_iter_common.h"
 #include "./iter_prefetcher.h"
+#include "./iter_sparse.h"
 
 namespace mxnet {
 namespace io {

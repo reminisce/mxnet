@@ -359,48 +359,6 @@ def test_sparse_ndarray_pickle():
 
 
 def test_sparse_ndarray_save_load():
-    # TODO(junwu): This function is a duplicate of mx.nd.load
-    # which must be modified to use _ndarray_cls to generate
-    # dense/sparse ndarrays. However, a circular import issue
-    # arises when _ndarray_cls is used in mx.nd.load since
-    # ndarray.py and sparse_ndarray.py would import each other.
-    # We propose to put _ndarray_cls and all the functions calling
-    # it in ndarray.py and sparse_ndarray.py into a util file
-    # to resolve the circular import issue. This function will be
-    # kept till then.
-    def load(fname):
-        """Loads an array from file.
-        See more details in ``save``.
-        Parameters
-        ----------
-        fname : str
-            The filename.
-        Returns
-        -------
-        list of NDArray or dict of str to NDArray
-            Loaded data.
-        """
-        from mxnet.base import string_types, mx_uint, NDArrayHandle, check_call, c_str, _LIB
-        if not isinstance(fname, string_types):
-            raise TypeError('fname required to be a string')
-        out_size = mx_uint()
-        out_name_size = mx_uint()
-        import ctypes
-        handles = ctypes.POINTER(NDArrayHandle)()
-        names = ctypes.POINTER(ctypes.c_char_p)()
-        check_call(_LIB.MXNDArrayLoad(c_str(fname),
-                                      ctypes.byref(out_size),
-                                      ctypes.byref(handles),
-                                      ctypes.byref(out_name_size),
-                                      ctypes.byref(names)))
-        if out_name_size.value == 0:
-            return [_ndarray_cls(NDArrayHandle(handles[i])) for i in range(out_size.value)]
-        else:
-            assert out_name_size.value == out_size.value
-            from mxnet.base import py_str
-            return dict(
-                (py_str(names[i]), _ndarray_cls(NDArrayHandle(handles[i]))) for i in range(out_size.value))
-
     np.random.seed(0)
     repeat = 1
     stypes = ['default', 'row_sparse', 'csr']

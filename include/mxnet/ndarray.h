@@ -28,16 +28,6 @@
 #endif
 
 namespace mxnet {
-// forward declarations
-class NDArray;
-
-namespace op {
-template<typename xpu>
-void FillZerosRspImpl(mshadow::Stream<xpu> *s, NDArray *dst);
-
-template<typename xpu>
-void CastStorageComputeImpl(mshadow::Stream<xpu> *s, const NDArray& input, const NDArray& output);
-};
 
 namespace ndarray {
 template<typename from_xpu, typename to_xpu>
@@ -603,13 +593,7 @@ class NDArray {
 
     /*! \brief default cosntructor */
     Chunk() : static_data(true), delay_alloc(false) {}
-/*
-      if (data.dev_mask() == cpu::kDevMask) {
-        shandle.ctx = Context::CPU();
-      } else {
-        CHECK_EQ(data.dev_mask(), gpu::kDevMask);
-        shandle.ctx = Context::GPU(dev_id);
-*/
+
     /*! \brief construct a new chunk */
     Chunk(TShape shape, Context ctx_, bool delay_alloc_, int dtype)
         : static_data(false), delay_alloc(true), ctx(ctx_) {
@@ -744,7 +728,7 @@ class NDArray {
         }
       }, shandle.ctx, var);
     }
-  };
+  };  // struct Chunk
 
   void SetTBlob() const {
     CHECK(ptr_ != nullptr);
@@ -789,7 +773,7 @@ class NDArray {
    *     this situation.
    */
   mutable TBlob tblob_;
-};
+};  // clas NDArray
 
 /*!
  * \brief issue an copy operation from one NDArray to another
@@ -804,107 +788,6 @@ class NDArray {
  *     due to different possible convention carried by copy function.
  */
 void CopyFromTo(const NDArray &from, NDArray *to, int priority = 0);
-
-// Make a copy of a CSR NDArray
-template<typename from_xpu, typename to_xpu>
-inline void CopyFromToCsrImpl(const NDArray from, NDArray *to, RunContext ctx) {
-  using namespace mshadow;
-  CHECK_EQ(from.storage_type(), to->storage_type()) << "Copying with different storage type";
-  // if source storage is not initialized, fill destination with zeros
-  auto s = ctx.get_stream<to_xpu>();
-  if (!from.storage_initialized()) {
-    // TODO(haibin) implement FillZerosCsrImpl
-    // op::FillZerosCsrImpl<to_xpu>(s, to);
-    return;
-  }
-  // Allocate storage
-  to->CheckAndAllocAuxData(csr::kIndPtr, from.aux_shape(csr::kIndPtr));
-  to->CheckAndAllocAuxData(csr::kIdx, from.aux_shape(csr::kIdx));
-  to->CheckAndAllocData(from.aux_shape(csr::kIdx));
-  // FIXME This is a naive implementation for CSR copy. It, however, is
-  // not efficient when the source CSR is sliced. In that case, we're copying
-  // a superset of values and indices of the slice.
-  // Ideally, we should truncate the values and indices array, and adjust indptr
-  // accordingly.
-  TBlob val = to->data();
-  TBlob indptr = to->aux_data(csr::kIndPtr);
-  TBlob idx = to->aux_data(csr::kIdx);
-  ndarray::Copy<from_xpu, to_xpu>(from.data(), &val,
-                                  from.ctx(), to->ctx(), ctx);
-  ndarray::Copy<from_xpu, to_xpu>(from.aux_data(csr::kIndPtr), &indptr,
-                                  from.ctx(), to->ctx(), ctx);
-  ndarray::Copy<from_xpu, to_xpu>(from.aux_data(csr::kIdx), &idx,
-                                  from.ctx(), to->ctx(), ctx);
-}
-
-// Make a copy of a row-sparse NDArray
-template<typename from_xpu, typename to_xpu>
-inline void CopyFromToRspImpl(const NDArray from, NDArray *to, RunContext ctx) {
-  using namespace mshadow;
-  CHECK_EQ(from.storage_type(), to->storage_type()) << "Copying with different storage type";
-  // if source is zeros, fill destination with zeros, too
-  auto s = ctx.get_stream<to_xpu>();
-  if (!from.storage_initialized()) {
-    op::FillZerosRspImpl<to_xpu>(s, to);
-    return;
-  }
-  auto aux_shape = from.aux_shape(rowsparse::kIdx);
-  to->CheckAndAlloc({aux_shape});
-  TBlob val = to->data();
-  TBlob idx = to->aux_data(rowsparse::kIdx);
-  ndarray::Copy<from_xpu, to_xpu>(from.data(), &val,
-                                  from.ctx(), to->ctx(), ctx);
-  ndarray::Copy<from_xpu, to_xpu>(from.aux_data(rowsparse::kIdx), &idx,
-                                  from.ctx(), to->ctx(), ctx);
-}
-
-// Make a copy of a dense NDArray
-template<typename from_xpu, typename to_xpu>
-inline void CopyFromToDnsImpl(const NDArray from, NDArray *to, RunContext ctx) {
-  using namespace mshadow;
-  CHECK_EQ(from.storage_type(), to->storage_type()) << "Copying with different storage type";
-  TBlob tmp = to->data();
-  ndarray::Copy<from_xpu, to_xpu>(from.data(), &tmp,
-                                  from.ctx(), to->ctx(), ctx);
-}
-
-// Make a copy of an NDArray based on storage type
-template<typename from_xpu, typename to_xpu>
-void CopyFromToImpl(const NDArray from, NDArray *to, RunContext ctx) {
-  using namespace std;
-  using namespace mshadow;
-  // if storage type doesn't match, cast the storage first
-  auto from_stype = from.storage_type();
-  auto to_stype = to->storage_type();
-  NDArray casted_nd;
-  if (from_stype != to_stype) {
-    TShape shape = from.shape();
-    auto from_ctx = from.ctx();
-    auto s = ctx.get_stream<from_xpu>();
-    // TODO(haibin) inplace conversion
-    if (to_stype == kDefaultStorage) {
-      casted_nd = NDArray(shape, from_ctx);
-    } else {
-      casted_nd = NDArray(to_stype, shape, from_ctx);
-    }
-    op::CastStorageComputeImpl<from_xpu>(s, from, casted_nd);
-  } else {
-    casted_nd = from;
-  }
-  if (to_stype == kDefaultStorage) {
-    CopyFromToDnsImpl<from_xpu, to_xpu>(casted_nd, to, ctx);
-  } else if (to_stype == kRowSparseStorage) {
-    CopyFromToRspImpl<from_xpu, to_xpu>(casted_nd, to, ctx);
-  } else if (to_stype == kCSRStorage) {
-    CopyFromToCsrImpl<from_xpu, to_xpu>(casted_nd, to, ctx);
-  } else {
-    LOG(FATAL) << "unknown storage type" << to_stype;
-  }
-  if (is_same<from_xpu, mshadow::gpu>::value || is_same<to_xpu, mshadow::gpu>::value) {
-    // Wait GPU kernel to complete
-    ctx.get_stream<gpu>()->Wait();
-  }
-}
 
 /*!
  * \brief Perform elementwise sum over each data from source, store result into out.

@@ -2323,7 +2323,7 @@ def %s(%s):
 
 
 # pylint: enable=too-many-locals, invalid-name
-def _init_ndarray_module_backend(root_namespace):
+def _init_ndarray_module(root_namespace):
     """List and add all the ndarray functions to current module."""
     plist = ctypes.POINTER(ctypes.c_char_p)()
     size = ctypes.c_uint()
@@ -2351,7 +2351,7 @@ def _init_ndarray_module_backend(root_namespace):
             setattr(module_obj, function.__name__, function)
 
 # register backend operators in mx.nd
-_init_ndarray_module_backend("mxnet")
+_init_ndarray_module("mxnet")
 
 # from .base import add_fileline_to_docstring
 # add_fileline_to_docstring(__name__)
