@@ -506,6 +506,7 @@ void CopyFromTo(const NDArray &from, NDArray *to, int priority) {
       FnProperty::kNormal, priority, PROFILER_MESSAGE("CopyCPU2CPU"));
   } else {
 #if MXNET_USE_CUDA
+#if __CUDACC__
     if (a == cpu::kDevMask && b == gpu::kDevMask) {
       Engine::Get()->PushSync([from, ret](RunContext ctx) {
           NDArray nd(ret);
@@ -528,6 +529,7 @@ void CopyFromTo(const NDArray &from, NDArray *to, int priority) {
     } else {
       LOG(FATAL) << "unknown device mask";
     }
+#endif  // __CUDACC__
 #else
     LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
 #endif

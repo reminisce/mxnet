@@ -11,30 +11,6 @@
 namespace mxnet {
 namespace op {
 
-#if 0
-/*!
- * \brief This is the kernel for initializing row_idx array
- * of a RSP matrix. Each thread checks a row of the matrix,
- * if non-zero elements are found, mark this row as non-zero
- * by row_idx[cur_row_id] = cur_row_id. Otherwise,
- * row_idx[cur_row_id] = num_rows.
- */
-struct FillRspRowIdx {
-  template<typename DType, typename RType>
-  MSHADOW_XINLINE static void Map(int i, RType* row_idx, const DType* arr,
-                                  const int num_rows, const int num_cols) {
-    row_idx[i] = num_rows;
-    const int offset = i * num_cols;
-    for (int j = 0; j < num_cols; ++j) {
-      if (arr[offset+j] != 0) {
-        row_idx[i] = i;
-        break;
-      }
-    }
-  }
-};
-#endif
-
 /*!
  * \brief Kernel for marking row_idx of a RSP matrix per row
  */
@@ -58,31 +34,6 @@ struct MarkRspRowIdx {
   }
 };
 
-#if 0
-struct CopyDnsToRsp{
-  // i represents the row index of the matrix data
-  template<typename DType, typename RType>
-  MSHADOW_XINLINE static void Map(int i, RType* row_idx, DType* rsp_data,
-                                  const DType* dns_data, const int num_rows, const int num_cols) {
-    int j = 0;
-    int offset = i * num_cols;
-    for (; j < num_cols; ++j) {
-      if (dns_data[offset+j] != 0) {
-        break;
-      }
-    }
-    if (num_cols == j) {
-      row_idx[i] = num_rows;
-    } else {
-      row_idx[i] = i;
-      for (j = 0; j < num_cols; ++j) {
-        rsp_data[offset+j] = dns_data[offset+j];
-      }
-    }
-  }
-};
-#endif
-
 /*!
  * \brief
  * CPU implementation of casting a dns tensor to rsp type.
@@ -102,7 +53,7 @@ inline void CastStorageDnsRspImpl(mshadow::Stream<cpu>* s, const TBlob& dns, NDA
           dns.dptr<DType>(), num_cols);
       index_t nnr = 0;
       nnr = std::accumulate(row_idx, row_idx+num_rows, nnr);
-      rsp->SetAuxShape(rowsparse::kIdx, mshadow::Shape1(nnr));
+      rsp->set_aux_shape(rowsparse::kIdx, mshadow::Shape1(nnr));
       if (0 == nnr) return;
       rsp->CheckAndAllocData(mshadow::Shape2(nnr, num_cols));
       mshadow::Tensor<cpu, 2, DType> dns_data = dns.FlatTo2D<cpu, DType>(s);
@@ -308,7 +259,8 @@ void CastStorageCsrDnsImpl(mshadow::Stream<xpu>* s, const NDArray& csr, TBlob* d
 
 // TODO(junwu) Implement GPU version for these functions
 // and move them to a .cuh file
-#ifdef __CUDACC__
+// Use #if __CUDACC__ to guard the code block
+#if MXNET_USE_CUDA
 inline void CastStorageDnsRspImpl(mshadow::Stream<gpu>* s, const TBlob& dns, NDArray* rsp) {
   LOG(FATAL) << "CastStorageDnsRspImpl gpu version is not implemented.";
 }

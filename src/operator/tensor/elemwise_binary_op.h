@@ -194,7 +194,7 @@ void BinaryComputeRspRsp(const nnvm::NodeAttrs& attrs,
       }
       auto new_shape = output.aux_shape(rowsparse::kIdx);
       new_shape[0] -= num_common_rows;
-      output.SetAuxShape(rowsparse::kIdx, new_shape);
+      output.set_aux_shape(rowsparse::kIdx, new_shape);
     });
   });
 }

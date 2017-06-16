@@ -192,7 +192,7 @@ class NDArray {
    * nnz that is smaller than nnz1+nnz2. Therefore, the storage shape's size
    * needs to be shrunk from nnz1+nnz2 to nnz.
    */
-  inline void SetStorageShape(const TShape& sshape) {
+  inline void set_storage_shape(const TShape& sshape) {
     CHECK(storage_type() != kDefaultStorage);
     ptr_->storage_shape = sshape;
   }
@@ -212,7 +212,7 @@ class NDArray {
    * for the final result. After the operation is done, the exact size of
    * the shape is known and need to be reset using this function.
    */
-  inline void SetAuxShape(size_t i, const TShape& shape) const {
+  inline void set_aux_shape(size_t i, const TShape& shape) const {
     ptr_->aux_shapes[i] = shape;
   }
 
@@ -773,7 +773,7 @@ class NDArray {
    *     this situation.
    */
   mutable TBlob tblob_;
-};  // clas NDArray
+};  // class NDArray
 
 /*!
  * \brief issue an copy operation from one NDArray to another
