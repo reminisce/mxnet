@@ -391,6 +391,7 @@ MXNET_DLL int MXNDArraySlice(NDArrayHandle handle,
                              mx_uint slice_end,
                              NDArrayHandle *out);
 
+#if 0
 /*!
  * \brief Slice the NDArray with non-default storage along axis 0.
  * \param handle the handle to the NDArray
@@ -403,6 +404,8 @@ MXNET_DLL int MXNDArraySliceEx(NDArrayHandle handle,
                    mx_uint slice_begin,
                    mx_uint slice_end,
                    NDArrayHandle out);
+#endif
+
 /*!
  * \brief Index the NDArray along axis 0.
  * \param handle the handle to the NDArray

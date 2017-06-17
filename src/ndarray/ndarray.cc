@@ -61,6 +61,9 @@ NDArray NDArray::Reshape(const TShape &shape) const {
 }
 
 NDArray NDArray::Slice(index_t begin, index_t end) const {
+  if (storage_type() != kDefaultStorage) {
+    return SliceEx(begin, end);
+  }
   using namespace autograd;
   using namespace mshadow;
   NDArray ret = *this;
@@ -94,6 +97,7 @@ NDArray NDArray::Slice(index_t begin, index_t end) const {
   }
 }
 
+#if 0
 void NDArray::SliceEx(index_t begin, index_t end, NDArray *ret) const {
   using namespace autograd;
   using namespace mshadow;
@@ -151,6 +155,74 @@ void NDArray::SliceEx(index_t begin, index_t end, NDArray *ret) const {
   } else {
     LOG(FATAL) << "Slice not yet implemented for storage " << stype;
   }
+  // TODO(haibin) support auto_grad for SliceEx
+}
+#endif
+
+NDArray NDArray::SliceEx(index_t begin, index_t end) const {
+  using namespace autograd;
+  using namespace mshadow;
+  CHECK(!is_none()) << "NDArray is not initialized";
+  CHECK_GE(shape_[0], end) << "Slice end index out of range";
+  auto stype = storage_type();
+  CHECK_NE(stype, kDefaultStorage);
+  CHECK_NE(stype, kUndefinedStorage);
+  TShape sliced_shape(Shape2(end-begin, shape()[1]));
+  if (stype == kCSRStorage) {
+    using namespace csr;
+    NDArray ret(storage_type(), TShape(Shape2(end-begin, shape()[1])),
+                ctx(), true, dtype_, ptr_->aux_types, {TShape(Shape1(0)), TShape(Shape1(0))});
+    NDArray src = *this;
+    // destination NDArray shares the same variable
+    ret.ptr_->var = var();
+
+    Engine::Get()->PushSync([src, ret, begin, end](RunContext ctx) {
+      NDArray dst = ret;
+      // create a new chunk for dst NDArray
+      NDArray::Chunk chunk = *src.ptr_;
+      // void indptr storage handle
+      chunk.aux_handles[kIndPtr] = Storage::Handle();
+      // shape for indptr is end - begin + 1
+      chunk.CheckAndAllocAuxData(kIndPtr, Shape1(end - begin + 1));
+      if (src.ctx().dev_mask() == cpu::kDevMask) {
+        MSHADOW_INT_TYPE_SWITCH(src.aux_type(kIndPtr), IType, {
+          MSHADOW_TYPE_SWITCH(src.dtype(), DType, {
+            // create new indptr
+            const IType* src_indptr = src.aux_data(kIndPtr).dptr<IType>();
+            IType* dst_indptr = static_cast<IType*> (chunk.aux_handles[kIndPtr].dptr);
+            op::SliceCsrIndPtrImpl<cpu, IType>(begin, end, ctx, src_indptr, dst_indptr);
+            // advance idx and values pointers (CPU implementation)
+            // TODO(haibin) refactor for GPU implementation later
+            IType offset = src_indptr[begin];
+            IType* idx = static_cast<IType*>(chunk.aux_handles[kIdx].dptr);
+            DType* values = static_cast<DType*>(chunk.shandle.dptr);
+            chunk.aux_handles[kIdx].dptr = idx + offset;
+            chunk.shandle.dptr = values + offset;
+            // update storage shape and aux shape (CPU implementation)
+            auto nnz = dst_indptr[end - begin];
+            chunk.aux_shapes[kIdx] = Shape1(nnz);
+            chunk.storage_shape = Shape1(nnz);
+            chunk.static_data = true;
+            chunk.skip_delete_var = true;
+            // update dst chunk
+            *dst.ptr_ = chunk;
+          });
+        });
+      } else {
+#if MXNET_USE_CUDA
+       LOG(FATAL) << "SliceEx CSR not implemented yet";
+#else
+       LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
+#endif
+      }
+      }, ctx(), {}, {var()},
+      FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
+    return ret;
+  } else {
+    LOG(FATAL) << "Slice not yet implemented for storage " << stype;
+  }
+  // TODO(junwu) remove the following line
+  return NDArray();
   // TODO(haibin) support auto_grad for SliceEx
 }
 

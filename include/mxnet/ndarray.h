@@ -443,13 +443,6 @@ class NDArray {
   NDArray Slice(index_t begin, index_t end) const;
 
   /*!
-   * \brief Slice a NDArray with non-default storage
-   * \param begin begin index in first dim (inclusive)
-   * \param end end index in first dim (exclusive)
-   * \return sliced NDArray
-   */
-  void SliceEx(index_t begin, index_t end, NDArray *dst) const;
-  /*!
    * \brief Index a NDArray
    * \param idx the index
    * \return idx-th sub array NDArray
@@ -751,6 +744,14 @@ class NDArray {
 #endif
   }
 
+  /*!
+   * \brief Slice a NDArray with non-default storage
+   * Do not call this function directly. Use NDArray::Slice()
+   * \param begin begin index in first dim (inclusive)
+   * \param end end index in first dim (exclusive)
+   * \return sliced NDArray
+   */
+  NDArray SliceEx(index_t begin, index_t end) const;
 
 #if MKL_EXPERIMENTAL == 1
   std::shared_ptr<MKLMemHolder> Mkl_mem_;

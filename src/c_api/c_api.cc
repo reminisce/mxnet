@@ -320,6 +320,7 @@ int MXNDArraySlice(NDArrayHandle handle,
   API_END_HANDLE_ERROR(delete ptr);
 }
 
+#if 0
 int MXNDArraySliceEx(NDArrayHandle handle,
                    mx_uint slice_begin,
                    mx_uint slice_end,
@@ -329,6 +330,7 @@ int MXNDArraySliceEx(NDArrayHandle handle,
   static_cast<NDArray*>(handle)->SliceEx(slice_begin, slice_end, ptr);
   API_END();
 }
+#endif
 
 int MXNDArrayAt(NDArrayHandle handle,
                 mx_uint idx,

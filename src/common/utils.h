@@ -134,8 +134,8 @@ inline FCompute GetFCompute(const Op* op, Context ctx) {
 }
 
 inline FComputeEx GetFComputeEx(const Op* op, Context ctx, int stype) {
-  static auto& fcpu = nnvm::Op::GetAttr<FComputeEx>(FCOMP_EX_CPU);
-  static auto& fgpu = nnvm::Op::GetAttr<FComputeEx>(FCOMP_EX_GPU);
+  static auto& fcpu = nnvm::Op::GetAttr<FComputeEx>("FComputeEx<cpu>");
+  static auto& fgpu = nnvm::Op::GetAttr<FComputeEx>("FComputeEx<gpu>");
   if (stype == kDefaultStorage) return nullptr;
   if (ctx.dev_mask() == cpu::kDevMask) {
     return fcpu.get(op, nullptr);

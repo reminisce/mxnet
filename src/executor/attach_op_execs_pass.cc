@@ -47,8 +47,8 @@ class ForwardOpExecutor : public OpExecutor {
       op_->Forward(op_ctx, in_data_, req, out_data_, aux_data_);
       CastNonDefaultStorage<gpu>(out_array, temp_out_, op_ctx);
 #endif  // __CUDACC__
-#else
-      LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
+#elif NDEBUG == 0
+      LOG(DEBUG) << MXNET_GPU_NOT_ENABLED_ERROR;
 #endif
     } else {
       GetDefaultBlobs<cpu>(in_array_, &in_data_, &temp_in_, op_ctx);
