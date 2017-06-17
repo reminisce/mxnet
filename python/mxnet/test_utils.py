@@ -14,15 +14,15 @@ import scipy.sparse as sp
 import numpy as np
 import numpy.testing as npt
 import numpy.random as rnd
-import mxnet as mx
-from .context import Context
-from .ndarray import array, _STORAGE_TYPE_STR_TO_ID
-from .symbol import Symbol
 try:
     import requests
 except ImportError:
     # in rare cases requests may be not installed
     pass
+from .context import Context
+from .ndarray import array, _STORAGE_TYPE_STR_TO_ID
+from .symbol import Symbol
+import mxnet as mx
 
 _rng = np.random.RandomState(1234)
 

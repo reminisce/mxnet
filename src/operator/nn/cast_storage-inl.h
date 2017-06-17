@@ -3,8 +3,8 @@
  * \file cast_storage-inl.h
  * \brief cast_storage implementation for dense and sparse tensors
  */
-#ifndef MXNET_OPERATOR_NN_CAST_STORAGE_H_
-#define MXNET_OPERATOR_NN_CAST_STORAGE_H_
+#ifndef MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_
+#define MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_
 
 #include "../mxnet_op.h"
 
@@ -297,4 +297,4 @@ void CastStorageComputeImpl(mshadow::Stream<xpu>* s,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_OPERATOR_NN_CAST_STORAGE_H_
+#endif  // MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_

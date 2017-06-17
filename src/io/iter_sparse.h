@@ -3,8 +3,8 @@
  * \file iter_sparse.h
  * \brief mxnet sparse data iterator
  */
-#ifndef MXNET_ITER_SPARSE_H_
-#define MXNET_ITER_SPARSE_H_
+#ifndef MXNET_IO_ITER_SPARSE_H_
+#define MXNET_IO_ITER_SPARSE_H_
 
 #include <mxnet/io.h>
 #include <mxnet/ndarray.h>
@@ -24,4 +24,4 @@ class SparseIIterator : public IIterator<DType> {
 };  // class SparseIIterator
 
 }  // namespace mxnet
-#endif  // MXNET_ITER_SPARSE_H_
+#endif  // MXNET_IO_ITER_SPARSE_H_
