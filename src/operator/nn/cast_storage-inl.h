@@ -6,6 +6,7 @@
 #ifndef MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_
 #define MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_
 
+#include <numeric>
 #include "../mxnet_op.h"
 
 namespace mxnet {
@@ -257,19 +258,6 @@ void CastStorageCsrDnsImpl(mshadow::Stream<xpu>* s, const NDArray& csr, TBlob* d
   });
 }
 
-// TODO(junwu) Implement GPU version for these functions
-// and move them to a .cuh file
-// Use #if __CUDACC__ to guard the code block
-#if MXNET_USE_CUDA
-inline void CastStorageDnsRspImpl(mshadow::Stream<gpu>* s, const TBlob& dns, NDArray* rsp) {
-  LOG(FATAL) << "CastStorageDnsRspImpl gpu version is not implemented.";
-}
-
-inline void CastStorageDnsCsrImpl(mshadow::Stream<gpu>* s, const TBlob& dns, NDArray* csr) {
-  LOG(FATAL) << "CastStorageDnsCsrImpl gpu version is not implemented.";
-}
-#endif
-
 template<typename xpu>
 void CastStorageComputeImpl(mshadow::Stream<xpu>* s,
                             const NDArray& input,
@@ -297,4 +285,9 @@ void CastStorageComputeImpl(mshadow::Stream<xpu>* s,
 
 }  // namespace op
 }  // namespace mxnet
+
+#ifdef __CUDACC__
+#include "./cast_storage-inl.cuh"
+#endif
+
 #endif  // MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_

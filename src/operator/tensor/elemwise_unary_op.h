@@ -9,7 +9,6 @@
 #include <mxnet/operator_util.h>
 #include <vector>
 #include <utility>
-#include <numeric>
 #include "../mxnet_op.h"
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"

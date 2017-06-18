@@ -61,42 +61,98 @@ NDArray NDArray::Reshape(const TShape &shape) const {
 }
 
 NDArray NDArray::Slice(index_t begin, index_t end) const {
-  if (storage_type() != kDefaultStorage) {
-    return SliceEx(begin, end);
-  }
   using namespace autograd;
   using namespace mshadow;
-  NDArray ret = *this;
   CHECK(!is_none()) << "NDArray is not initialized";
   CHECK_GE(shape_[0], end) << "Slice end index out of range";
-  auto stype = storage_type();
-  CHECK_EQ(stype, kDefaultStorage);
-  size_t length = shape_.ProdShape(1, shape_.ndim());
-  MSHADOW_TYPE_SWITCH(ret.dtype(), DType, {
-    ret.byte_offset_ += begin * length * sizeof(DType);
-  });
-  ret.shape_[0] = end - begin;
-  if (AutogradRuntime::Get()->IsTraining()) {
-    // fake a slice_axis op
-    ret.entry_.clear();
-    const nnvm::Op* op = nnvm::Op::Get("slice_axis");
-    nnvm::NodeAttrs attrs;
-    attrs.op = op;
-    attrs.dict.insert({"axis", "0"});
-    attrs.dict.insert({"begin", std::to_string(begin)});
-    attrs.dict.insert({"end", std::to_string(end)});
-    op->attr_parser(&attrs);
-    std::vector<NDArray> inputs, outputs;
-    inputs.emplace_back(*this);
-    outputs.emplace_back(std::move(ret));
-    AutogradRuntime::Get()->RecordImperativeFCompute(
-      op, attrs, &inputs, &outputs);
-    return outputs[0];
-  } else {
+  CHECK_NE(storage_type(), kUndefinedStorage);
+  if (storage_type() == kDefaultStorage) {
+    NDArray ret = *this;
+    auto stype = storage_type();
+    size_t length = shape_.ProdShape(1, shape_.ndim());
+    MSHADOW_TYPE_SWITCH(ret.dtype(), DType, {
+      ret.byte_offset_ += begin * length * sizeof(DType);
+    });
+    ret.shape_[0] = end - begin;
+    if (AutogradRuntime::Get()->IsTraining()) {
+      // fake a slice_axis op
+      ret.entry_.clear();
+      const nnvm::Op* op = nnvm::Op::Get("slice_axis");
+      nnvm::NodeAttrs attrs;
+      attrs.op = op;
+      attrs.dict.insert({"axis", "0"});
+      attrs.dict.insert({"begin", std::to_string(begin)});
+      attrs.dict.insert({"end", std::to_string(end)});
+      op->attr_parser(&attrs);
+      std::vector<NDArray> inputs, outputs;
+      inputs.emplace_back(*this);
+      outputs.emplace_back(std::move(ret));
+      AutogradRuntime::Get()->RecordImperativeFCompute(
+        op, attrs, &inputs, &outputs);
+      return outputs[0];
+    } else {
+      return ret;
+    }
+  } else if (storage_type() == kCSRStorage) {
+    // TODO(haibin) support auto_grad
+    TShape sliced_shape(Shape2(end-begin, shape()[1]));
+    using namespace csr;
+    NDArray ret(storage_type(), TShape(Shape2(end-begin, shape()[1])),
+                ctx(), true, dtype_, ptr_->aux_types,
+                {TShape(Shape1(0)), TShape(Shape1(0))});
+    NDArray src = *this;
+    // destination NDArray shares the same variable
+    ret.ptr_->var = var();
+
+    Engine::Get()->PushSync([src, ret, begin, end](RunContext ctx) {
+      NDArray dst = ret;
+      // create a new chunk for dst NDArray
+      NDArray::Chunk chunk = *src.ptr_;
+      // void indptr storage handle
+      chunk.aux_handles[kIndPtr] = Storage::Handle();
+      // shape for indptr is end - begin + 1
+      chunk.CheckAndAllocAuxData(kIndPtr, Shape1(end - begin + 1));
+      if (src.ctx().dev_mask() == cpu::kDevMask) {
+        MSHADOW_INT_TYPE_SWITCH(src.aux_type(kIndPtr), IType, {
+          MSHADOW_TYPE_SWITCH(src.dtype(), DType, {
+            // create new indptr
+            const IType* src_indptr = src.aux_data(kIndPtr).dptr<IType>();
+            IType* dst_indptr = static_cast<IType*> (chunk.aux_handles[kIndPtr].dptr);
+            op::SliceCsrIndPtrImpl<cpu, IType>(begin, end, ctx, src_indptr, dst_indptr);
+            // advance idx and values pointers (CPU implementation)
+            // TODO(haibin) refactor for GPU implementation later
+            IType offset = src_indptr[begin];
+            IType* idx = static_cast<IType*>(chunk.aux_handles[kIdx].dptr);
+            DType* values = static_cast<DType*>(chunk.shandle.dptr);
+            chunk.aux_handles[kIdx].dptr = idx + offset;
+            chunk.shandle.dptr = values + offset;
+            // update storage shape and aux shape (CPU implementation)
+            auto nnz = dst_indptr[end - begin];
+            chunk.aux_shapes[kIdx] = Shape1(nnz);
+            chunk.storage_shape = Shape1(nnz);
+            chunk.static_data = true;
+            chunk.skip_delete_var = true;
+            // update dst chunk
+            *dst.ptr_ = chunk;
+          });
+        });
+      } else {
+#if MXNET_USE_CUDA
+       LOG(FATAL) << "SliceEx CSR not implemented yet";
+#else
+       LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
+#endif
+      }
+      }, ctx(), {}, {var()},
+      FnProperty::kNormal, 0, PROFILER_MESSAGE_FUNCNAME);
     return ret;
+  } else {
+    LOG(FATAL) << "Slice not yet implemented for storage " << storage_type();
   }
+  return NDArray();
 }
 
+#if 0
 NDArray NDArray::SliceEx(index_t begin, index_t end) const {
   using namespace autograd;
   using namespace mshadow;
@@ -163,6 +219,7 @@ NDArray NDArray::SliceEx(index_t begin, index_t end) const {
   return NDArray();
   // TODO(haibin) support auto_grad for SliceEx
 }
+#endif
 
 NDArray NDArray::At(index_t idx) const {
   CHECK(storage_type() == kDefaultStorage) << "Storage type "
@@ -391,6 +448,17 @@ void ScalarOp(const NDArray &lhs,
   }
 }
 
+size_t num_aux_data(NDArrayStorageType stype) {
+  size_t num = 0;
+  switch (stype) {
+    case kDefaultStorage: num = 0; break;
+    case kCSRStorage: num = 2; break;
+    case kRowSparseStorage: num = 1; break;
+     default: LOG(FATAL) << "Unknown storage type" << stype; break;
+  }
+  return num;
+}
+
 // Make a copy of a CSR NDArray
 template<typename from_xpu, typename to_xpu>
 inline void CopyFromToCsrImpl(const NDArray from, NDArray *to, RunContext ctx) {
@@ -406,11 +474,6 @@ inline void CopyFromToCsrImpl(const NDArray from, NDArray *to, RunContext ctx) {
   to->CheckAndAllocAuxData(csr::kIndPtr, from.aux_shape(csr::kIndPtr));
   to->CheckAndAllocAuxData(csr::kIdx, from.aux_shape(csr::kIdx));
   to->CheckAndAllocData(from.aux_shape(csr::kIdx));
-  // FIXME This is a naive implementation for CSR copy. It, however, is
-  // not efficient when the source CSR is sliced. In that case, we're copying
-  // a superset of values and indices of the slice.
-  // Ideally, we should truncate the values and indices array, and adjust indptr
-  // accordingly.
   TBlob val = to->data();
   TBlob indptr = to->aux_data(csr::kIndPtr);
   TBlob idx = to->aux_data(csr::kIdx);
@@ -819,9 +882,9 @@ void NDArray::Save(dmlc::Stream *strm) const {
   int32_t stype = storage_type();
   strm->Write(&stype, sizeof(stype));
 
-  const int32_t num_aux_data = NumAuxData(storage_type());
+  const int32_t nad = num_aux_data(storage_type());
   // save storage shape if ndarray is sparse
-  if (num_aux_data > 0) {
+  if (nad > 0) {
     storage_shape().Save(strm);
   }
 
@@ -849,8 +912,8 @@ void NDArray::Save(dmlc::Stream *strm) const {
   strm->Write(&type_flag, sizeof(type_flag));
 
   // save aux_types and aux_shapes
-  if (num_aux_data > 0) {
-    for (int i = 0; i < num_aux_data; ++i) {
+  if (nad > 0) {
+    for (int i = 0; i < nad; ++i) {
       int32_t aux_type_flag = aux_type(i);
       strm->Write(&aux_type_flag, sizeof(aux_type_flag));
       aux_shape(i).Save(strm);
@@ -865,8 +928,8 @@ void NDArray::Save(dmlc::Stream *strm) const {
   strm->Write(save_data.dptr_, type_size * save_data.shape_.Size());
 
   // save aux data
-  if (num_aux_data > 0) {
-    for (int i = 0; i < num_aux_data; ++i) {
+  if (nad > 0) {
+    for (int i = 0; i < nad; ++i) {
       TBlob save_data = nd_cpu.aux_data(i);
       // save aux_data
       CHECK(save_data.CheckContiguous());
@@ -933,11 +996,11 @@ bool NDArray::Load(dmlc::Stream *strm) {
   // load storage type
   int32_t stype;
   if (strm->Read(&stype, sizeof(stype)) != sizeof(stype)) return false;
-  const int32_t num_aux_data = NumAuxData(static_cast<NDArrayStorageType>(stype));
+  const int32_t nad = num_aux_data(static_cast<NDArrayStorageType>(stype));
 
   // load storage shape
   TShape sshape;
-  if (num_aux_data > 0) {
+  if (nad > 0) {
     if (!sshape.Load(strm)) return false;
   }
 
@@ -959,10 +1022,10 @@ bool NDArray::Load(dmlc::Stream *strm) {
   // load aux_types and aux_shapes
   std::vector<int32_t> aux_types;
   std::vector<TShape> aux_shapes;
-  if (num_aux_data > 0) {
-    aux_types.resize(num_aux_data);
-    aux_shapes.resize(num_aux_data);
-    for (int i = 0; i < num_aux_data; ++i) {
+  if (nad > 0) {
+    aux_types.resize(nad);
+    aux_shapes.resize(nad);
+    for (int i = 0; i < nad; ++i) {
       // load aux_type(i)
       if (strm->Read(&aux_types[i], sizeof(aux_types[i])) != sizeof(aux_types[i])) return false;
       // load aux_shapes(i)
@@ -972,7 +1035,7 @@ bool NDArray::Load(dmlc::Stream *strm) {
 
   // load data into CPU
   NDArray temp;
-  if (0 == num_aux_data) {
+  if (0 == nad) {
     temp = NDArray(shape, Context::CPU(), false, type_flag);
   } else {
     temp = NDArray(static_cast<NDArrayStorageType>(stype), shape,
@@ -986,8 +1049,8 @@ bool NDArray::Load(dmlc::Stream *strm) {
   if (strm->Read(load_data.dptr_, nread) != nread) return false;
 
   // load aux_data
-  if (num_aux_data > 0) {
-    for (int i = 0; i < num_aux_data; ++i) {
+  if (nad > 0) {
+    for (int i = 0; i < nad; ++i) {
       load_data = temp.aux_data(i);
       type_size = mshadow::mshadow_sizeof(load_data.type_flag_);
       nread = type_size * load_data.Size();

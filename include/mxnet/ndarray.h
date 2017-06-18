@@ -259,19 +259,6 @@ class NDArray {
     CHECK(!is_none());
     return ptr_->aux_types[i];
   }
-  /*!
-   * \return the number of aux data used for given storage type
-   */
-  static size_t NumAuxData(NDArrayStorageType stype) {
-    size_t num = 0;
-    switch (stype) {
-      case kDefaultStorage: num = 0; break;
-      case kCSRStorage: num = 2; break;
-      case kRowSparseStorage: num = 1; break;
-       default: LOG(FATAL) << "Unknown storage type" << stype; break;
-    }
-    return num;
-  }
 
   inline NDArrayStorageType storage_type() const {
     if (is_none()) return kUndefinedStorage;
@@ -744,15 +731,6 @@ class NDArray {
 #endif
   }
 
-  /*!
-   * \brief Slice a NDArray with non-default storage
-   * Do not call this function directly. Use NDArray::Slice()
-   * \param begin begin index in first dim (inclusive)
-   * \param end end index in first dim (exclusive)
-   * \return sliced NDArray
-   */
-  NDArray SliceEx(index_t begin, index_t end) const;
-
 #if MKL_EXPERIMENTAL == 1
   std::shared_ptr<MKLMemHolder> Mkl_mem_;
 #endif
@@ -775,6 +753,11 @@ class NDArray {
    */
   mutable TBlob tblob_;
 };  // class NDArray
+
+/*!
+ * \return the number of aux data used for given storage type
+ */
+size_t num_aux_data(NDArrayStorageType stype);
 
 /*!
  * \brief issue an copy operation from one NDArray to another
