@@ -8,6 +8,10 @@
 
 #include <numeric>
 #include "../mxnet_op.h"
+#ifdef __CUDACC__
+#include "./cast_storage-inl.cuh"
+#endif
+
 
 namespace mxnet {
 namespace op {
@@ -285,9 +289,5 @@ void CastStorageComputeImpl(mshadow::Stream<xpu>* s,
 
 }  // namespace op
 }  // namespace mxnet
-
-#ifdef __CUDACC__
-#include "./cast_storage-inl.cuh"
-#endif
 
 #endif  // MXNET_OPERATOR_NN_CAST_STORAGE_INL_H_
