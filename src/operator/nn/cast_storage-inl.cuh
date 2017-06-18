@@ -1,7 +1,7 @@
 /*!
  *  Copyright (c) 2017 by Contributors
- * \file elementwise_unary_op.cuh
- * \brief Function defintion of elementwise unary operators
+ * \file cast_storage-inl.cuh
+ * \brief implementation of cast_storage op on GPU
  */
 #ifndef MXNET_OPERATOR_NN_CAST_STORAGE_INL_CUH_
 #define MXNET_OPERATOR_NN_CAST_STORAGE_INL_CUH_
