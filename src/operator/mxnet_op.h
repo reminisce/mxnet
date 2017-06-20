@@ -210,20 +210,22 @@ __global__ void mxnet_generic_kernel(int N, Args... args) {
     OP::Map(i, args...);
   }
 }
+#endif  // __CUDACC__
 
 
 template<typename OP>
 struct Kernel<OP, gpu> {
   template<typename ...Args>
   inline static void Launch(mshadow::Stream<gpu> *s, int N, Args... args) {
+#ifdef __CUDACC__
     using namespace mshadow::cuda;
     int ngrid = std::min(kMaxGridNum, (N + kBaseThreadNum - 1) / kBaseThreadNum);
     mxnet_generic_kernel<OP, Args...>
       <<<ngrid, kBaseThreadNum, 0, mshadow::Stream<gpu>::GetStream(s)>>>(
         N, args...);
+#endif  // __CUDACC__
   }
 };
-#endif  // __CUDACC__
 
 
 }  // namespace mxnet_op
