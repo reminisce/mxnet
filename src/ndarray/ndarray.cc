@@ -12,6 +12,7 @@
 #include <mxnet/resource.h>
 #include <mshadow/tensor.h>
 #include "./ndarray_function.h"
+#include "../common/utils.h"
 #include "../operator/tensor/matrix_op-inl.h"
 #include "../operator/tensor/init_op.h"
 #include "./autograd.h"
@@ -466,7 +467,7 @@ void CopyFromToImpl(const NDArray from, NDArray *to, RunContext ctx) {
     } else {
       casted_nd = NDArray(to_stype, shape, from_ctx);
     }
-    op::CastStorageComputeImpl<from_xpu>(s, from, casted_nd);
+    common::CastStorageDispatch<from_xpu>(s, from, casted_nd);
   } else {
     casted_nd = from;
   }
