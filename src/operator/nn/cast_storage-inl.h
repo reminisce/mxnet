@@ -8,7 +8,9 @@
 
 #include <numeric>
 #include "../mxnet_op.h"
+#ifdef __CUDACC__
 #include "./cast_storage-inl.cuh"
+#endif  // __CUDACC__
 
 
 namespace mxnet {
