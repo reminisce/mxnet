@@ -3,6 +3,7 @@
  */
 #ifndef MXNET_KVSTORE_COMM_H_
 #define MXNET_KVSTORE_COMM_H_
+#include <dmlc/timer.h>
 #include <dmlc/omp.h>
 #include <string>
 #include <algorithm>
@@ -111,7 +112,10 @@ class CommCPU : public Comm {
       }
 
       Engine::Get()->PushSync([reduce, this](RunContext rctx) {
+          double start = dmlc::GetTime();
           ReduceSumCPU(reduce);
+          double elapsed = dmlc::GetTime() - start;
+          LOG(INFO) << "Default push time cost " << elapsed * 1000 << " ms";
         }, Context::CPU(), const_vars, {reduce[0].var()},
         FnProperty::kCPUPrioritized, priority, PROFILER_MESSAGE("KVStoreReduce"));
 
@@ -135,8 +139,12 @@ class CommCPU : public Comm {
       auto result = buf.merged;
       Engine::Get()->PushSync([reduce, result, this](RunContext rctx) {
           NDArray out = result;
+          double start = dmlc::GetTime();
           is_serial_push_?
             ReduceSumCPUExSerial(reduce, &out) : ReduceSumCPUExParallel(reduce, &out);
+          double elapsed = dmlc::GetTime() - start;
+          LOG(INFO) << (is_serial_push_? "SERIAL" : "PARALLEL") << " push time cost "
+                    << elapsed * 1000 << " ms";
         }, Context::CPU(), const_vars, {result.var()},
         FnProperty::kCPUPrioritized, priority, PROFILER_MESSAGE("KVStoreReduce"));
     }
@@ -186,6 +194,7 @@ class CommCPU : public Comm {
     // the values tensor of the inputs
     MSHADOW_TYPE_SWITCH(out->dtype(), DType, {
       MSHADOW_INT_TYPE_SWITCH(out->aux_type(kIdx), IType, {
+        double start = dmlc::GetTime();
         std::vector<Tensor<cpu, 2, DType>> in_vals(num_in);
         std::vector<Tensor<cpu, 1, IType>> in_indices(num_in);
         // offset to the values tensor of all inputs
@@ -214,13 +223,17 @@ class CommCPU : public Comm {
         // dedup indices
         std::sort(indices.begin(), indices.end());
         indices.resize(std::unique(indices.begin(), indices.end()) - indices.begin());
+        double elapsed = dmlc::GetTime() - start;
+        LOG(INFO) << "Serial push: count unique idx time cost " << elapsed * 1000 << " ms";
         // the one left are unique non-zero rows
         size_t nnr = indices.size();
+        LOG(INFO) << "Serial push: nnr = " << nnr;
         // allocate memory for output
         out->CheckAndAlloc({Shape1(nnr)});
         auto idx_data = out->aux_data(kIdx).FlatTo1D<cpu, IType>();
         auto val_data = out->data().FlatTo2D<cpu, DType>();
 
+        start = dmlc::GetTime();
         for (size_t i = 0; i < nnr; i++) {
           // copy indices back
           idx_data[i] = indices[i];
@@ -241,6 +254,8 @@ class CommCPU : public Comm {
             }
           }
         }
+        elapsed = dmlc::GetTime() - start;
+        LOG(INFO) << "Serial push: serial elemwise sum time cost " << elapsed * 1000 << " ms";
       });
     });
   }
@@ -251,8 +266,10 @@ class CommCPU : public Comm {
                           NDArray* out) {
 #pragma omp parallel num_threads(nthread_reduction_)
     {
+      //double start = dmlc::GetTime();
       const size_t nnr = uniq_row_idx.size();
       const int num_threads = omp_get_num_threads();
+      //LOG(INFO) << "Paralllel push: #omp threads: " << num_threads;
       size_t row_block_len = (nnr + num_threads  - 1) / num_threads;
       const size_t row_block_start = omp_get_thread_num() * row_block_len;
       if (row_block_start < nnr) {
@@ -297,6 +314,9 @@ class CommCPU : public Comm {
           }
         }
       }
+      //double elapsed = dmlc::GetTime() - start;
+      //LOG(INFO) << "Parallel push: thread " << omp_get_thread_num()
+      //          << " reduce sum time cost " << elapsed * 1000 << " ms";
     }
   }
 
@@ -346,10 +366,17 @@ class CommCPU : public Comm {
     MSHADOW_TYPE_SWITCH(out->dtype(), DType, {
       MSHADOW_INT_TYPE_SWITCH(out->aux_type(kIdx), IType, {
         std::vector<IType> uniq_row_idx;
+        double start = dmlc::GetTime();
         GetUniqueRspRowIdx(nds, &uniq_row_idx);
+        double elapsed = dmlc::GetTime() - start;
+        LOG(INFO) << "Paralllel push: GetUniqueRspRowIdx time cost: " << elapsed * 1000 << " ms";
+        LOG(INFO) << "Paralllel push: nnr = " << uniq_row_idx.size();
         out->CheckAndAlloc({mshadow::Shape1(uniq_row_idx.size())});
         out->data().FlatTo2D<cpu, DType>() = static_cast<DType>(0);
+        start = dmlc::GetTime();
         ReduceSumCPUExImpl<DType, IType>(nds, uniq_row_idx, out);
+        elapsed = dmlc::GetTime() - start;
+        LOG(INFO) << "Paralllel push: ReduceSumCPUExImpl time cost: " << elapsed * 1000 << " ms";
       });
     });
   }
