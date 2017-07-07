@@ -4,7 +4,6 @@
  * \brief
  * \author Ziheng Jiang
 */
-
 #ifndef MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_INL_H_
 #define MXNET_OPERATOR_CONTRIB_QUANTIZED_CONV2D_INL_H_
 #include <mxnet/operator.h>
@@ -14,15 +13,23 @@
 namespace mxnet {
 namespace op {
 
+namespace qconv {
+enum ConvolutionOpCudnnTune {kOff, kLimited, kFastest};
+}
+
 struct QuantizedConv2DParam :
   public dmlc::Parameter<QuantizedConv2DParam> {
   TShape kernel;
   TShape stride;
   TShape pad;
+  TShape dilate;
   uint32_t num_filter;
   bool no_bias;
-  uint64_t workspace;
   int layout;
+  int cudnn_tune;
+  bool cudnn_off;
+  uint32_t num_group;
+  uint64_t workspace;
   DMLC_DECLARE_PARAMETER(QuantizedConv2DParam) {
     DMLC_DECLARE_FIELD(kernel);
     DMLC_DECLARE_FIELD(stride)
@@ -31,17 +38,31 @@ struct QuantizedConv2DParam :
     DMLC_DECLARE_FIELD(pad)
     .set_default(TShape())
     .describe("pad for conv2d: (h, w)");
+    DMLC_DECLARE_FIELD(dilate)
+    .set_default(TShape())
+    .describe("convolution dilate: (h, w) or (d, h, w)");
     DMLC_DECLARE_FIELD(num_filter);
     DMLC_DECLARE_FIELD(no_bias)
     .set_default(true);
-    DMLC_DECLARE_FIELD(workspace).set_default(1024).set_range(0, 8192)
-    .describe("Maximum temperal workspace allowed for convolution (MB).");
     DMLC_DECLARE_FIELD(layout)
     .add_enum("NCHW", mshadow::kNCHW)
     .add_enum("NHWC", mshadow::kNHWC)
     .set_default(mshadow::kNCHW)
     .describe("Set layout for input, output and weight. Empty for\n    "
               "default layout: NCW for 1d, NCHW for 2d and NCDHW for 3d.");
+    DMLC_DECLARE_FIELD(cudnn_tune)
+    .add_enum("off", qconv::kOff)
+    .add_enum("limited_workspace", qconv::kLimited)
+    .add_enum("fastest", qconv::kFastest)
+    .set_default(qconv::kOff)
+    .describe("Whether to pick convolution algo by running performance test.");
+    DMLC_DECLARE_FIELD(cudnn_off)
+    .set_default(false)
+    .describe("Turn off cudnn for this layer.");
+    DMLC_DECLARE_FIELD(num_group).set_default(1)
+    .describe("Number of group partitions.");
+    DMLC_DECLARE_FIELD(workspace).set_default(1024).set_range(0, 8192)
+    .describe("Maximum temporary workspace allowed for convolution (MB).");
   }
 };
 

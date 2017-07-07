@@ -568,14 +568,14 @@ int MXSymbolGrad(SymbolHandle sym, mx_uint num_wrt, const char** wrt, SymbolHand
 
 int MXQuantizeGraph(SymbolHandle sym,
                     SymbolHandle *ret_sym,
-                    int offline,
                     mx_uint num_ignore,
-                    SymbolHandle *ignore_symbols) {
+                    SymbolHandle *ignore_symbols,
+                    mx_uint num_offline,
+                    const char **offline_params) {
   nnvm::Symbol *s = static_cast<nnvm::Symbol*>(sym);
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
   nnvm::Graph g = Symbol2Graph(*s);
-  g.attrs["offline"] = std::make_shared<nnvm::any>(std::move(offline));
   std::unordered_set<nnvm::NodePtr> ignore_nodes;
   for (size_t i = 0; i < num_ignore; ++i) {
     nnvm::Symbol* sym = static_cast<nnvm::Symbol*>(ignore_symbols[i]);
@@ -584,6 +584,11 @@ int MXQuantizeGraph(SymbolHandle sym,
     }
   }
   g.attrs["ignore_nodes"] = std::make_shared<nnvm::any>(std::move(ignore_nodes));
+  std::unordered_set<std::string> offline;
+  for (size_t i = 0; i < num_offline; ++i) {
+    offline.emplace(offline_params[i]);
+  }
+  g.attrs["offline_params"] = std::make_shared<nnvm::any>(std::move(offline));
   g = ApplyPass(std::move(g), "QuantizeGraph");
   nnvm::Symbol *s = new nnvm::Symbol();
   s->outputs = g.outputs;

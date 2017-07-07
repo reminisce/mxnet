@@ -26,7 +26,7 @@ class QuantizedMaxPoolCuDNNOp : public Operator {
     init_cudnn_ = false;
     alpha_ = 1.0f;
     beta_  = 0.0f;
-    dtype_ = mshadow::DataType<DType>::kCudnnFlag;
+    dtype_ = CUDNN_DATA_INT8;
     mode_ = CUDNN_POOLING_MAX;
     nan_prop_ = CUDNN_NOT_PROPAGATE_NAN;
   }

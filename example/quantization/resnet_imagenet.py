@@ -33,7 +33,7 @@ logger.setLevel(logging.DEBUG)
 
 mean_img = None
 label_name = 'softmax_label'
-max_num_examples = None
+max_num_examples = batch_size * 100
 
 
 # create data iterator
@@ -98,7 +98,7 @@ def score(sym, arg_params, aux_params,
 
     speed = num / (time.time() - tic)
 
-    # logging.info('Finished with %f images per second', speed)
+    logging.info('Finished with %f images per second', speed)
     for m in metrics:
         logging.info(m.get())
 
@@ -126,5 +126,5 @@ print('after quantization:')
 # print(arg_params)
 # print(qarg_params)
 # print('\n\n')
-score(qsym, qarg_params, aux_params, data, devs, label_name, 256)
+score(qsym, qarg_params, aux_params, data, devs, label_name, max_num_examples)
 

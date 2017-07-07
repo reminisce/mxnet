@@ -10,12 +10,15 @@ import argparse
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+INFERENCE = True
 no_bias = True
-batch_size = 32
 name = 'resnet_cifar'
-layer = 110
 data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/')
+checkpoint_path = os.path.join('checkpoints/', name)
 
+batch_size = 32
+layer = 50
+ctx = mx.gpu(0)
 ignore_symbols = []
 
 def residual_unit(data, num_filter, stride, dim_match, name, bottle_neck=True, bn_mom=0.9, workspace=256, memonger=False):
@@ -166,7 +169,6 @@ args = parser.parse_args()
 
 # load network
 sym = get_symbol(**vars(args))
-print(sym)
 
 # download data if necessary
 def _download(data_dir):
@@ -220,18 +222,22 @@ def get_iterator(data_dir):
 (train_iter, val_iter) = get_iterator(data_dir)
 
 # create a trainable module on GPU 0
-model = mx.mod.Module(symbol=sym, context=mx.gpu(0))
-# model.fit(train_iter,
-#                 eval_data=val_iter,
-#                 optimizer='sgd',
-#                 optimizer_params={'learning_rate':0.1},
-#                 eval_metric='acc',
-#                 batch_end_callback = mx.callback.Speedometer(batch_size, 100),
-#                 num_epoch=10)
-# model.save_checkpoint(name, layer)
-_, arg_params, aux_params = mx.model.load_checkpoint(name, layer)
-model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
-model.set_params(arg_params=arg_params, aux_params=aux_params)
+model = mx.mod.Module(symbol=sym, context=ctx)
+if not INFERENCE:
+    print('start training')
+    model.fit(train_iter,
+              eval_data=val_iter,
+              optimizer='sgd',
+              optimizer_params={'learning_rate':0.1},
+              eval_metric='acc',
+              batch_end_callback = mx.callback.Speedometer(batch_size, 100),
+              num_epoch=10)
+    model.save_checkpoint(checkpoint_path, layer)
+else:
+    print('inference, load checkpoint')
+    _, arg_params, aux_params = mx.model.load_checkpoint(checkpoint_path, layer)
+    model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
+    model.set_params(arg_params=arg_params, aux_params=aux_params)
 
 
 test_iter = val_iter
@@ -246,7 +252,7 @@ params = model.get_params()
 def test(symbol):
     model = mx.model.FeedForward(
         symbol,
-        ctx=mx.gpu(0),
+        ctx=ctx,
         arg_params=params[0],
         aux_params=params[1])
     print 'Accuracy:', model.score(test_iter)*100, '%'

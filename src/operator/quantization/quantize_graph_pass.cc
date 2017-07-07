@@ -37,18 +37,21 @@ NodePtr InsertNode(std::string op_name,
   return node;
 }
 
-std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs) {
+std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs,
+                                     std::unordered_set<std::string>&& offline_params) {
+
   std::string node_suffixs[3] = {"", "_min", "_max"};
   std::unordered_map<Node*, NodePtr> mirror_map;
   nnvm::NodeEntryMap<NodePtr> entry_var;
-  auto is_quantize_op = [](NodePtr n) {
+  auto need_offline = [&](NodePtr n) {
     return n->op() &&
            (n->op()->name == quantize_op_name) &&
-           n->inputs[0].node->is_variable();
+           n->inputs[0].node->is_variable() &&
+           offline_params.count(n->inputs[0].node->attrs.name);
   };
   DFSVisit(outputs, [&](const NodePtr& node) {
     for (NodeEntry& e : node->inputs) {
-      if (is_quantize_op(e.node)) {
+      if (need_offline(e.node)) {
         std::string node_name = e.node->attrs.name;
         if (!entry_var.count(e)) {
           entry_var[e] = CreateNode("nullptr", node_name + node_suffixs[e.index]);
@@ -70,7 +73,7 @@ inline bool NeedQuantize(NodePtr node, const std::unordered_set<NodePtr> ignore_
 Graph QuantizeGraph(Graph &&src) {
   static auto& quantized_op_map = Op::GetAttr<mxnet::FQuantizedOp>("FQuantizedOp");
   static auto& need_shrink_map = Op::GetAttr<mxnet::TQuantizationNeedShrink>("TQuantizationNeedShrink");
-  bool offline = src.GetAttr<int>("offline");
+  auto offline_params = src.GetAttr<std::unordered_set<std::string>>("offline_params");
   auto ignore_nodes = src.GetAttr<std::unordered_set<NodePtr>>("ignore_nodes");
 
   std::unordered_map<Node*, NodePtr> mirror_map;
@@ -194,7 +197,8 @@ Graph QuantizeGraph(Graph &&src) {
     }
   }
 
-  if (offline) outputs = OfflineParams(std::move(outputs));
+  if (!offline_params.empty()) outputs =
+    OfflineParams(std::move(outputs), std::move(offline_params));
 
   Graph ret;
   ret.outputs = std::move(outputs);

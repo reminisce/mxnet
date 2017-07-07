@@ -47,8 +47,8 @@ inline bool QuantizeDownAndShrinkRangeType(const nnvm::NodeAttrs& attrs,
     nnvm::get<QuantizeDownAndShrinkRangeParam>(attrs.parsed);
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 3U);
-  // CHECK_EQ((*in_attrs)[0], mshadow::kInt32)
-  //   << "`quantize_down_and_shrink_range` only supports int32 input for now";
+  CHECK_EQ((*in_attrs)[0], mshadow::kInt32)
+    << "`quantize_down_and_shrink_range` only supports int32 input for now";
   CHECK_EQ((*in_attrs)[1], mshadow::kFloat32)
     << "the second input of `quantize_down_and_shrink_range` "
     << "should be a tensor with type of float";
