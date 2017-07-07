@@ -10,6 +10,7 @@ logger.setLevel(logging.DEBUG)
 name = 'mlp_mnist'
 no_bias = True
 batch_size = 32
+INFERENCE = True
 
 data = mx.symbol.Variable('data')
 fc1  = mx.symbol.FullyConnected(data = data, name='fc1', num_hidden=32, no_bias=no_bias)
@@ -39,32 +40,20 @@ train_iter = mx.io.NDArrayIter(X_train, Y_train, batch_size=batch_size)
 test_iter = mx.io.NDArrayIter(X_test, Y_test, batch_size=batch_size)
 val_iter = test_iter
 
-# training
-# model = mx.model.FeedForward(
-#     ctx = mx.gpu(0),      # Run on GPU 0
-#     symbol = mlp,         # Use the network we just defined
-#     num_epoch = 10,       # Train for 10 epochs
-#     learning_rate = 0.1,  # Learning rate
-#     momentum = 0.9,       # Momentum for SGD with momentum
-#     wd = 0.00001)         # Weight decay for regularization
-#
-# model.fit(
-#     X=train_iter,  # Training data set
-#     eval_data=test_iter,  # Testing data set. MXNet computes scores on test set every epoch
-#     batch_end_callback = mx.callback.Speedometer(batch_size, 200))  # Logging module to print out progress
-
 model = mx.mod.Module(symbol=mlp, context=mx.gpu(0))
-# model.fit(train_iter,
-#           eval_data=val_iter,
-#           optimizer='sgd',
-#           optimizer_params={'learning_rate':0.1},
-#           eval_metric='acc',
-#           batch_end_callback = mx.callback.Speedometer(batch_size, 200),
-#           num_epoch=10)
-# model.save_checkpoint(name, 10)
-_, arg_params, aux_params = mx.model.load_checkpoint(name, 10)
-model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
-model.set_params(arg_params=arg_params, aux_params=aux_params)
+if not INFERENCE:
+    model.fit(train_iter,
+              eval_data=val_iter,
+              optimizer='sgd',
+              optimizer_params={'learning_rate':0.1},
+              eval_metric='acc',
+              batch_end_callback = mx.callback.Speedometer(batch_size, 200),
+              num_epoch=10)
+    model.save_checkpoint(name, 10)
+else:
+    _, arg_params, aux_params = mx.model.load_checkpoint(name, 10)
+    model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
+    model.set_params(arg_params=arg_params, aux_params=aux_params)
 
 acc = mx.metric.Accuracy()
 print('Accuracy: {}%'.format(model.score(test_iter, acc)[0][1]*100))

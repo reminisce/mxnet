@@ -9,6 +9,7 @@ import mxnet.ndarray as nd
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+INFERENCE = False
 no_bias = True
 batch_size = 32
 name = "conv_mnist"
@@ -41,18 +42,20 @@ val_iter = mx.io.NDArrayIter(X_test, Y_test, batch_size=batch_size)
 
 # create a trainable module on GPU 0
 model = mx.mod.Module(symbol=conv_net, context=mx.gpu(0))
+if not INFERENCE:
 # train with the same
-# model.fit(train_iter,
-#                 eval_data=val_iter,
-#                 optimizer='sgd',
-#                 optimizer_params={'learning_rate':0.1},
-#                 eval_metric='acc',
-#                 batch_end_callback = mx.callback.Speedometer(batch_size, 100),
-#                 num_epoch=10)
-# model.save_checkpoint(name, 10)
-_, arg_params, aux_params = mx.model.load_checkpoint(name, 10)
-model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
-model.set_params(arg_params=arg_params, aux_params=aux_params)
+    model.fit(train_iter,
+                    eval_data=val_iter,
+                    optimizer='sgd',
+                    optimizer_params={'learning_rate':0.1},
+                    eval_metric='acc',
+                    batch_end_callback = mx.callback.Speedometer(batch_size, 100),
+                    num_epoch=10)
+    model.save_checkpoint(name, 10)
+else:
+    _, arg_params, aux_params = mx.model.load_checkpoint(name, 10)
+    model.bind(data_shapes=train_iter.provide_data, label_shapes=train_iter.provide_label)
+    model.set_params(arg_params=arg_params, aux_params=aux_params)
 
 
 test_iter = val_iter
