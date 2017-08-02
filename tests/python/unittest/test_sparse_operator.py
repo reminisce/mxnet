@@ -189,7 +189,8 @@ def test_sparse_retain():
         data = mx.symbol.Variable('data')
         idx = mx.symbol.Variable('indices')
         sym = mx.sym.sparse_retain(data=data, indices=idx)
-        check_numeric_gradient(sym, [rsp, indices], grad_nodes=['data'], grad_stype_dict={'data': 'row_sparse'})
+        check_numeric_gradient(sym, [rsp, indices], grad_nodes=['data'],
+                               grad_stype_dict={'data': 'row_sparse'})
 
     shape = rand_shape_2d()
     shape_3d = rand_shape_3d()

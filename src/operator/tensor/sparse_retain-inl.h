@@ -179,45 +179,33 @@ struct SparseRetainRspRowBlockKernel {
 };
 
 template<typename xpu>
-void SparseRetainOpForwardEx(const nnvm::NodeAttrs& attrs,
-                             const OpContext& ctx,
-                             const std::vector<NDArray>& inputs,
-                             const std::vector<OpReqType>& req,
-                             const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 2U);
-  CHECK_EQ(outputs.size(), 1U);
-  CHECK_EQ(req.size(), 1U);
-  CHECK_EQ(req[sr::kOut], kWriteTo) << "sparse_retain only supports req=\'write\'";
+void SparseRetainOpForwardRspImpl(mshadow::Stream<xpu> *s,
+                                  const NDArray& input_nd,
+                                  const TBlob& idx_data,
+                                  const OpReqType req,
+                                  NDArray* output_nd) {
+  CHECK_EQ(input_nd.storage_type(), kRowSparseStorage)
+    << "SparseRetainOpForwardRspImpl operator only takes row sparse NDArray as input";
+  CHECK_EQ(output_nd->storage_type(), kRowSparseStorage)
+    << "SparseRetainOpForwardRspImpl operator only outputs row sparse NDArray";
 
-  CHECK_EQ(inputs[sr::kArr].storage_type(), kRowSparseStorage)
-    << "sparse_retain operator only takes row sparse NDArray as input";
-  CHECK_EQ(inputs[sr::kIdx].storage_type(), kDefaultStorage)
-    << "sparse_retain operator only takes default NDArray as its index array";
-  CHECK_EQ(outputs[sr::kOut].storage_type(), kRowSparseStorage)
-    << "sparse_retain operator only outputs row sparse NDArray";
-
-  const NDArray& input_nd = inputs[sr::kArr];
-  const TBlob idx_data = inputs[sr::kIdx].data();
-
-  if (req[sr::kOut] == kNullOp
+  if (req == kNullOp
       || !input_nd.storage_initialized()
       || idx_data.Size() == 0U
       || input_nd.shape()[0] == 0) {
-    FillComputeZerosEx<xpu>(attrs, ctx, {}, req, outputs);
+    FillZerosRspImpl(s, output_nd);
     return;
   }
 
   const TBlob input_data = input_nd.data();
   const TBlob input_idx = input_nd.aux_data(rowsparse::kIdx);
 
-  NDArray output_nd = outputs[sr::kOut];
-  output_nd.CheckAndAlloc({mshadow::Shape1(idx_data.Size())});
-  TBlob output_data = output_nd.data();
-  TBlob output_idx = output_nd.aux_data(rowsparse::kIdx);
+  output_nd->CheckAndAlloc({mshadow::Shape1(idx_data.Size())});
+  TBlob output_data = output_nd->data();
+  TBlob output_idx = output_nd->aux_data(rowsparse::kIdx);
   const auto row_length = input_data.shape_.ProdShape(1, input_data.shape_.ndim());
 
   using namespace mxnet_op;
-  Stream<xpu> *s = ctx.get_stream<xpu>();
   MSHADOW_TYPE_SWITCH(output_data.type_flag_, DType, {  // output data type
     Kernel<set_zero, xpu>::Launch(s, output_data.Size(), output_data.dptr<DType>());
     MSHADOW_IDX_TYPE_SWITCH(output_idx.type_flag_, RType, {  // row index data type
@@ -237,6 +225,27 @@ void SparseRetainOpForwardEx(const nnvm::NodeAttrs& attrs,
       });
     });
   });
+}
+
+template<typename xpu>
+void SparseRetainOpForwardEx(const nnvm::NodeAttrs& attrs,
+                             const OpContext& ctx,
+                             const std::vector<NDArray>& inputs,
+                             const std::vector<OpReqType>& req,
+                             const std::vector<NDArray>& outputs) {
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 1U);
+  CHECK_EQ(req.size(), 1U);
+  CHECK_EQ(req[sr::kOut], kWriteTo) << "sparse_retain only supports req=\'write\'";
+  CHECK_EQ(inputs[sr::kIdx].storage_type(), kDefaultStorage)
+    << "sparse_retain operator only takes default NDArray as its index array";
+  if (inputs[sr::kArr].storage_type() == kRowSparseStorage) {
+    NDArray output_nd = outputs[sr::kOut];
+    SparseRetainOpForwardRspImpl<xpu>(ctx.get_stream<xpu>(), inputs[sr::kArr],
+        inputs[sr::kIdx].data(), req[sr::kOut], &output_nd);
+  } else {
+    LOG(FATAL) << "sparse_retain op only supports row-sparse ndarrays as input";
+  }
 }
 
 template<int req>
