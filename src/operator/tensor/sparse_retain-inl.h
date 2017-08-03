@@ -57,8 +57,14 @@ inline bool SparseRetainForwardInferStorageType(const nnvm::NodeAttrs& attrs,
                                                 std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 2U);
   CHECK_EQ(out_attrs->size(), 1U);
-  STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, sr::kArr, kRowSparseStorage);
-  STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, sr::kOut, kRowSparseStorage);
+  if ((*in_attrs)[sr::kArr] == kRowSparseStorage) {
+    STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, sr::kIdx, kDefaultStorage);
+    STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, sr::kOut, kRowSparseStorage);
+  } else {  // fallback
+    type_assign(&(in_attrs->at(sr::kArr)), kDefaultStorage);
+    type_assign(&(in_attrs->at(sr::kIdx)), kDefaultStorage);
+    type_assign(&(out_attrs->at(sr::kOut)), kDefaultStorage);
+  }
   return true;
 }
 
@@ -68,10 +74,16 @@ inline bool SparseRetainBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
                                                  std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 2U);
   CHECK_EQ(out_attrs->size(), 2U);
-  STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, sr::kOut, kDefaultStorage);
-  STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, sr::kIdx, kDefaultStorage);
-  STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, sr::kArr, kRowSparseStorage);
-  STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, sr::kIdx, kDefaultStorage);
+  if (out_attrs->at(sr::kArr) == kRowSparseStorage) {
+    STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, sr::kOut, kDefaultStorage);
+    STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, sr::kIdx, kDefaultStorage);
+    STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, sr::kIdx, kDefaultStorage);
+  } else {
+    type_assign(&(in_attrs->at(sr::kOut)), kDefaultStorage);
+    type_assign(&(in_attrs->at(sr::kIdx)), kDefaultStorage);
+    type_assign(&(out_attrs->at(sr::kArr)), kDefaultStorage);
+    type_assign(&(out_attrs->at(sr::kIdx)), kDefaultStorage);
+  }
   return true;
 }
 
@@ -184,13 +196,13 @@ void SparseRetainOpForwardRspImpl(mshadow::Stream<xpu> *s,
                                   const TBlob& idx_data,
                                   const OpReqType req,
                                   NDArray* output_nd) {
+  if (req == kNullOp) return;
   CHECK_EQ(input_nd.storage_type(), kRowSparseStorage)
     << "SparseRetainOpForwardRspImpl operator only takes row sparse NDArray as input";
   CHECK_EQ(output_nd->storage_type(), kRowSparseStorage)
     << "SparseRetainOpForwardRspImpl operator only outputs row sparse NDArray";
 
-  if (req == kNullOp
-      || !input_nd.storage_initialized()
+  if (!input_nd.storage_initialized()
       || idx_data.Size() == 0U
       || input_nd.shape()[0] == 0) {
     FillZerosRspImpl(s, output_nd);
@@ -270,11 +282,13 @@ void SparseRetainOpBackwardEx(const nnvm::NodeAttrs& attrs,
                               const std::vector<NDArray>& inputs,
                               const std::vector<OpReqType>& req,
                               const std::vector<NDArray>& outputs) {
-  CHECK_EQ(inputs.size(), 2U);
-  CHECK_EQ(outputs.size(), 2U);
   CHECK_EQ(req.size(), 2U);
-  CHECK_NE(req[sr::kArr], kWriteInplace);
-  CHECK_EQ(req[sr::kIdx], kNullOp)
+  CHECK_EQ(req[sr::kIdx], kNullOp);
+  if (req[sr::kArr] == kNullOp) return;
+  CHECK_EQ(req[sr::kArr], kWriteTo);
+
+  CHECK_EQ(inputs.size(), 2U);
+  CHECK_EQ(outputs.size(), 2U)
     << "sparse_retain does not support calculating gradients of indices";
 
   CHECK_EQ(inputs[sr::kOut].storage_type(), kDefaultStorage)
@@ -284,8 +298,17 @@ void SparseRetainOpBackwardEx(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(outputs[sr::kArr].storage_type(), kRowSparseStorage)
     << "sparse_retain backward only outputs row sparse NDArray as grad of input";
 
-  const TBlob out_grad_data = inputs[sr::kOut].data();
+  using namespace mxnet_op;
+  using namespace mshadow;
+  Stream<xpu> *s = ctx.get_stream<xpu>();
   const TBlob idx_data = inputs[sr::kIdx].data();
+  if (idx_data.Size() == 0U) {
+    NDArray output = outputs[sr::kArr];
+    FillZerosRspImpl<xpu>(s, &output);
+    return;
+  }
+
+  const TBlob out_grad_data = inputs[sr::kOut].data();
 
   NDArray in_grad_nd = outputs[sr::kArr];
   in_grad_nd.CheckAndAlloc({mshadow::Shape1(idx_data.Size())});
@@ -293,8 +316,6 @@ void SparseRetainOpBackwardEx(const nnvm::NodeAttrs& attrs,
   TBlob in_grad_idx = in_grad_nd.aux_data(rowsparse::kIdx);
   const auto row_length = out_grad_data.shape_.ProdShape(1, out_grad_data.shape_.ndim());
 
-  using namespace mxnet_op;
-  Stream<xpu> *s = ctx.get_stream<xpu>();
   MSHADOW_TYPE_SWITCH(out_grad_data.type_flag_, DType, {  // output data type
     MSHADOW_IDX_TYPE_SWITCH(in_grad_idx.type_flag_, RType, {  // row index data type
       MSHADOW_TYPE_SWITCH(idx_data.type_flag_, IType, {  // index array data type
