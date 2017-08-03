@@ -36,8 +36,8 @@ inline bool SquareSumForwardInferStorageType(const nnvm::NodeAttrs& attrs,
       STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, 0, kDefaultStorage);
     }
   } else {  // fallback
-      STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, 0, kDefaultStorage);
-      STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, 0, kDefaultStorage);
+    type_assign(&((*in_attrs)[0]), kDefaultStorage);
+    type_assign(&((*out_attrs)[0]), kDefaultStorage);
   }
   return true;
 }
@@ -53,9 +53,9 @@ inline bool SquareSumBackwardInferStorageType(const nnvm::NodeAttrs& attrs,
     STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, 1, kRowSparseStorage);
     STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, 0, kRowSparseStorage);
   } else {  // fallback
-    STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, 0, kDefaultStorage);
-    STORAGE_TYPE_ASSIGN_CHECK(*in_attrs, 1, kDefaultStorage);
-    STORAGE_TYPE_ASSIGN_CHECK(*out_attrs, 0, kDefaultStorage);
+    type_assign(&((*in_attrs)[0]), kDefaultStorage);
+    type_assign(&((*in_attrs)[1]), kDefaultStorage);
+    type_assign(&((*out_attrs)[0]), kDefaultStorage);
   }
   return true;
 }
@@ -212,6 +212,7 @@ void SquareSumRspImpl(const nnvm::NodeAttrs& attrs,
                       const NDArray& input,
                       const OpReqType req,
                       NDArray* output) {
+  if (req == kNullOp) return;
   const ReduceAxesParam& param = nnvm::get<ReduceAxesParam>(attrs.parsed);
   CHECK_EQ(param.axis.ndim(), 1U) << "_square_sum(row_sparse_matrix) only supports axis=0 or 1";
   CHECK(param.axis[0] == 0 || param.axis[0] == 1)
@@ -299,6 +300,7 @@ void SquareSumRspGradImpl(const nnvm::NodeAttrs& attrs,
                           const NDArray& input,
                           const OpReqType req,
                           NDArray* igrad) {
+  if (req == kNullOp) return;
   const ReduceAxesParam& param = nnvm::get<ReduceAxesParam>(attrs.parsed);
   CHECK_EQ(param.axis.ndim(), 1U) << "_square_sum(row_sparse_matrix) only supports axis=0/1";
   CHECK(param.axis[0] == 0 || param.axis[0] == 1)
