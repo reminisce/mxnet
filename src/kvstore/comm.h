@@ -188,7 +188,6 @@ class CommCPU : public Comm {
     }
   }
 
-  // TODO(haibin) support broadcast row_sparse on GPU
   void BroadcastRowSparse(int key, const NDArray& src,
                           const std::vector<std::pair<NDArray*, NDArray>>& dst,
                           const bool use_copy,
@@ -196,26 +195,30 @@ class CommCPU : public Comm {
     using namespace mshadow;
     auto size = dst.size();
     for (size_t i = 0; i < size; i++) {
-      auto out = dst[i].first;
-      auto row_id = dst[i].second;
+      NDArray* out = dst[i].first;
+      NDArray row_id = dst[i].second;
       if (use_copy) {
         CopyFromTo(src, out, priority);
       } else {
         CHECK_EQ(out->storage_type(), kRowSparseStorage)
                  << "BroadcastRowSparse expects row_sparse dst NDArray";
-        CHECK_EQ(out->ctx().dev_mask(), Context::kCPU)
-                 << "BroadcastRowSparse with dst on gpu context not supported";
         CHECK_EQ(row_id.ctx().dev_mask(), Context::kCPU)
                  << "BroadcastRowSparse with src on gpu context not supported";
+        bool is_to_gpu = out->ctx().dev_mask() == Context::kGPU;
+        NDArray out_cpu = (is_to_gpu?
+            NDArray(kRowSparseStorage, src.shape(), src.ctx(),
+                    true, src.dtype(), src.aux_types()) : *out);
         // retain according to unique indices
-        Engine::Get()->PushSync([src, out, row_id](RunContext rctx) {
-            NDArray *output = out;
+        Engine::Get()->PushSync([&](RunContext rctx) {
             const auto indices = row_id.data();
             op::SparseRetainOpForwardRspImpl<cpu>(rctx.get_stream<cpu>(),
                                                   src, indices, kWriteTo,
-                                                  output);
+                                                  &out_cpu);
           }, Context::CPU(), {src.var(), row_id.var()}, {out->var()},
           FnProperty::kNormal, priority, PROFILER_MESSAGE("KVStoreSparseRetain"));
+        if (is_to_gpu) {
+          CopyFromTo(out_cpu, out, priority);
+        }
       }
     }
   }
