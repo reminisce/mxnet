@@ -193,8 +193,7 @@ class CommCPU : public Comm {
                           const bool use_copy,
                           const int priority) override {
     using namespace mshadow;
-    auto size = dst.size();
-    for (size_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < dst.size(); ++i) {
       NDArray* out = dst[i].first;
       NDArray row_id = dst[i].second;
       if (use_copy) {
@@ -204,17 +203,17 @@ class CommCPU : public Comm {
                  << "BroadcastRowSparse expects row_sparse dst NDArray";
         CHECK_EQ(row_id.ctx().dev_mask(), Context::kCPU)
                  << "BroadcastRowSparse with src on gpu context not supported";
-        bool is_to_gpu = out->ctx().dev_mask() == Context::kGPU;
-        NDArray out_cpu = (is_to_gpu?
-            NDArray(kRowSparseStorage, src.shape(), src.ctx(),
-                    true, src.dtype(), src.aux_types()) : *out);
         // retain according to unique indices
-        Engine::Get()->PushSync([&](RunContext rctx) {
-            const auto indices = row_id.data();
+        bool is_to_gpu = out->ctx().dev_mask() == Context::kGPU;
+        NDArray out_cpu = is_to_gpu? NDArray(kRowSparseStorage, src.shape(),
+            src.ctx(), true, src.dtype(), src.aux_types()) : *out;
+        Engine::Get()->PushSync([=](RunContext rctx) {
+            const TBlob& indices = row_id.data();
+            NDArray temp = out_cpu;  // get rid of const qualifier
             op::SparseRetainOpForwardRspImpl<cpu>(rctx.get_stream<cpu>(),
                                                   src, indices, kWriteTo,
-                                                  &out_cpu);
-          }, Context::CPU(), {src.var(), row_id.var()}, {out->var()},
+                                                  &temp);
+          }, Context::CPU(), {src.var(), row_id.var()}, {out_cpu.var()},
           FnProperty::kNormal, priority, PROFILER_MESSAGE("KVStoreSparseRetain"));
         if (is_to_gpu) {
           CopyFromTo(out_cpu, out, priority);
