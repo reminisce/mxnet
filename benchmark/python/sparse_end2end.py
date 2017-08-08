@@ -25,7 +25,7 @@ parser.add_argument('--dataset', type=str, default='avazu',
 parser.add_argument('--num-gpu', type=int, default=0,
                     help='number of gpus to use. 0 means using cpu(0);'
                          'otherwise, use gpu(0),...,gpu(num_gpu-1)')
-parser.add_argument('--output-dim', type=int, default=1,
+parser.add_argument('--output-dim', type=int, default=4,
                     help='number of columns of the forward output')
 
 
@@ -178,9 +178,6 @@ if __name__ == '__main__':
             nbatch += 1
             batch = next_batch
 
-            mod.forward_backward(batch)
-            # update parameters
-            mod.update()
             # if have kvstore, need to pull corresponding rows of
             # the weights to each context
             if kv is not None:
@@ -195,6 +192,10 @@ if __name__ == '__main__':
                 for s in mod._exec_group.slices:
                     row_idx_array.append(row_indices[indptr[s.start]:indptr[s.stop]])
                 kv.row_sparse_pull('w', weight_array, priority=-index, row_ids=row_idx_array)
+
+            mod.forward_backward(batch)
+            # update parameters
+            mod.update()
 
             try:
                 # pre fetch next batch
