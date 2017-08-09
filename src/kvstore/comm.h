@@ -112,9 +112,9 @@ class CommCPU : public Comm {
     // avoid extra copy for single device, but it may bring problems for
     // abnormal usage of kvstore
     if (src.size() == 1) {
-      if (src[0].storage_type() == buf.merged.storage_type()) {
+      if (src[0].storage_type() == kDefaultStorage) {
         return src[0];
-      } else {
+      } else {  // if sparse and only one GPU, always update weight on CPU
         CopyFromTo(src[0], &buf.merged, priority);
         return buf.merged;
       }
@@ -193,6 +193,10 @@ class CommCPU : public Comm {
                           const bool use_copy,
                           const int priority) override {
     using namespace mshadow;
+    CHECK_EQ(src.storage_type(), kRowSparseStorage)
+      << "BroadcastRowSparse expects row-sparse src NDArray";
+    CHECK_EQ(src.ctx().dev_mask(), Context::kCPU)
+      << "BroadcastRowSparse with src on gpu context not supported";
     for (size_t i = 0; i < dst.size(); ++i) {
       NDArray* out = dst[i].first;
       NDArray row_id = dst[i].second;
@@ -202,7 +206,7 @@ class CommCPU : public Comm {
         CHECK_EQ(out->storage_type(), kRowSparseStorage)
                  << "BroadcastRowSparse expects row_sparse dst NDArray";
         CHECK_EQ(row_id.ctx().dev_mask(), Context::kCPU)
-                 << "BroadcastRowSparse with src on gpu context not supported";
+                 << "BroadcastRowSparse with row_indices on gpu context not supported";
         // retain according to unique indices
         bool is_to_gpu = out->ctx().dev_mask() == Context::kGPU;
         NDArray out_cpu = is_to_gpu? NDArray(kRowSparseStorage, src.shape(),
