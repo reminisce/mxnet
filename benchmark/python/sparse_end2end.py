@@ -79,7 +79,6 @@ datasets = { 'kdda' : kdda, 'avazu' : avazu }
 
 
 def get_sym(feature_dim):
-     initializer = mx.initializer.Normal()
      x = mx.symbol.Variable("data", stype='csr')
      norm_init = mx.initializer.Normal(sigma=0.01)
      w = mx.symbol.Variable("w", shape=(feature_dim, args.output_dim), init=norm_init, stype='row_sparse')
@@ -97,7 +96,7 @@ if __name__ == '__main__':
     num_batch = args.num_batch
     kvstore = args.kvstore
     profiler = args.profiler > 0
-    batch_size = args.batch_size
+    batch_size = args.batch_size if args.num_gpu == 0 else args.num_gpu * args.batch_size
     dummy_iter = args.dummy_iter
     dataset = args.dataset
     log_level = args.log_level
@@ -160,8 +159,11 @@ if __name__ == '__main__':
 
     # start profiler
     if profiler:
-        import random
-        name = 'profile_output_' + str(num_worker) + '.json'
+        device = 'cpu'
+        if args.num_gpu > 0:
+            device = 'gpu' + str(args.num_gpu)
+        name = 'profile_' + args.dataset + '_' + device + '_nworker' + str(num_worker)\
+               + '_batchsize' + str(args.batch_size) + '_outdim' + str(args.output_dim) + '.json'
         mx.profiler.profiler_set_config(mode='all', filename=name)
         mx.profiler.profiler_set_state('run')
 
@@ -207,6 +209,8 @@ if __name__ == '__main__':
             # accumulate prediction accuracy
             mod.update_metric(metric, batch.label)
         logging.info('epoch %d, %s' % (epoch, metric.get()))
+        if epoch == 0:
+            print "num_batches = ", nbatch
     if profiler:
         mx.profiler.profiler_set_state('stop')
     end = time.time()
