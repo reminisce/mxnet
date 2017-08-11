@@ -208,7 +208,7 @@ class CommCPU : public Comm {
         CHECK_EQ(row_id.ctx().dev_mask(), Context::kCPU)
                  << "BroadcastRowSparse with row_indices on gpu context not supported";
         // retain according to unique indices
-        bool is_to_gpu = out->ctx().dev_mask() == Context::kGPU;
+        const bool is_to_gpu = out->ctx().dev_mask() == Context::kGPU;
         NDArray out_cpu = is_to_gpu? NDArray(kRowSparseStorage, src.shape(),
             src.ctx(), true, src.dtype(), src.aux_types()) : *out;
         Engine::Get()->PushSync([=](RunContext rctx) {
