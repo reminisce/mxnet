@@ -88,6 +88,22 @@ def get_sym(feature_dim):
      return model
 
 
+def row_sparse_pull(kv, key, data, slices, weight_array, priority):
+    # if have kvstore, need to pull corresponding rows of
+    # the weights to each context
+    # column indices (NDArray type) of the csr data
+    # used as the row_idx of the weight row-sparse matrix
+    # TODO(junwu):
+    # the following two lines block, may need to precompute
+    # them and cache them outside the for loop
+    row_indices = data.indices
+    indptr = data.indptr.asnumpy()
+    row_idx_array = []
+    for s in slices:
+        row_idx_array.append(row_indices[indptr[s.start]:indptr[s.stop]])
+    kv.row_sparse_pull(key, weight_array, priority=priority, row_ids=row_idx_array)
+
+
 if __name__ == '__main__':
 
     # arg parser
@@ -176,24 +192,11 @@ if __name__ == '__main__':
         data_iter.reset()
         metric.reset()
         next_batch = next(data_iter)
+        if kv is not None:
+            row_sparse_pull(kv, 'w', next_batch.data[0], mod._exec_group.slices, weight_array, -index)
         while not end_of_batch:
             nbatch += 1
             batch = next_batch
-
-            # if have kvstore, need to pull corresponding rows of
-            # the weights to each context
-            if kv is not None:
-                # column indices (NDArray type) of the csr data
-                # used as the row_idx of the weight row-sparse matrix
-                # TODO(junwu):
-                # the following two lines block, may need to precompute
-                # them and cache them outside the for loop
-                row_indices = batch.data[0].indices
-                indptr = batch.data[0].indptr.asnumpy()
-                row_idx_array = []
-                for s in mod._exec_group.slices:
-                    row_idx_array.append(row_indices[indptr[s.start]:indptr[s.stop]])
-                kv.row_sparse_pull('w', weight_array, priority=-index, row_ids=row_idx_array)
 
             mod.forward_backward(batch)
             # update parameters
@@ -204,6 +207,8 @@ if __name__ == '__main__':
                 next_batch = next(data_iter)
                 if nbatch == num_batch:
                     raise StopIteration
+                if kv is not None:
+                    row_sparse_pull(kv, 'w', next_batch.data[0], mod._exec_group.slices, weight_array, -index)
             except StopIteration:
                 end_of_batch = True
             # accumulate prediction accuracy
