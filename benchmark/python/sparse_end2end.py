@@ -93,15 +93,18 @@ def row_sparse_pull(kv, key, data, slices, weight_array, priority):
     # the weights to each context
     # column indices (NDArray type) of the csr data
     # used as the row_idx of the weight row-sparse matrix
-    # TODO(junwu):
-    # the following two lines block, may need to precompute
-    # them and cache them outside the for loop
     row_indices = data.indices
-    indptr = data.indptr.asnumpy()
-    row_idx_array = []
-    for s in slices:
-        row_idx_array.append(row_indices[indptr[s.start]:indptr[s.stop]])
-    kv.row_sparse_pull(key, weight_array, priority=priority, row_ids=row_idx_array)
+    if len(slices) == 1:
+        kv.row_sparse_pull(key, weight_array, priority=priority, row_ids=row_indices)
+    else:  # more than one slices, multi-GPU training. Need to retain weight rows according to data slices
+        # TODO(junwu):
+        # the following line blocks, may need to pre-compute
+        # and cache it outside the for loop
+        indptr = data.indptr.asnumpy()
+        row_idx_array = []
+        for s in slices:
+            row_idx_array.append(row_indices[indptr[s.start]:indptr[s.stop]])
+        kv.row_sparse_pull(key, weight_array, priority=priority, row_ids=row_idx_array)
 
 
 if __name__ == '__main__':

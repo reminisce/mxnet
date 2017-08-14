@@ -20,7 +20,7 @@ def init_kv_with_str(stype='default'):
 
 def test_row_sparse_pull():
     kv = init_kv_with_str('row_sparse')
-    kv.init('e', mx.nd.ones(shape)._to_rsp())
+    kv.init('e', mx.nd.ones(shape).tostype('row_sparse'))
 
     def check_row_sparse_pull(kv, count, ctx=default_context()):
         num_rows = shape[0]
@@ -28,7 +28,7 @@ def test_row_sparse_pull():
         row_ids = []
         all_row_ids = np.arange(num_rows)
         for i in range(count):
-            vals.append(mx.nd.zeros(shape, ctx=ctx)._to_rsp())
+            vals.append(mx.nd.zeros(shape, ctx=ctx).tostype('row_sparse'))
             row_id = np.random.randint(num_rows, size=num_rows)
             row_ids.append(mx.nd.array(row_id, dtype='int64'))
         row_ids_to_pull = row_ids[0] if len(row_ids) == 1 else row_ids
