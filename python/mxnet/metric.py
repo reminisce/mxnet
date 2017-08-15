@@ -67,6 +67,7 @@ class EvalMetric(object):
         self.output_names = output_names
         self.label_names = label_names
         self._kwargs = kwargs
+        self._label_pred_same_ctx = False
         self.reset()
 
     def __str__(self):
@@ -84,7 +85,7 @@ class EvalMetric(object):
             'label_names': self.label_names})
         return config
 
-    def update_dict(self, label, pred):
+    def update_dict(self, label, pred, label_pred_same_ctx=False):
         """Update the internal evaluation with named label and pred
 
         Parameters
@@ -105,6 +106,7 @@ class EvalMetric(object):
         else:
             label = list(label.values())
 
+        self.label_pred_same_ctx = label_pred_same_ctx
         self.update(label, pred)
 
     def update(self, labels, preds):
@@ -368,11 +370,13 @@ class Accuracy(EvalMetric):
     ('accuracy', 0.6666666666666666)
     """
     def __init__(self, axis=1, name='accuracy',
-                 output_names=None, label_names=None):
+                 output_names=None, label_names=None, num_devs=0):
         super(Accuracy, self).__init__(
             name, axis=axis,
             output_names=output_names, label_names=label_names)
         self.axis = axis
+        self.sum_metric_array = None if num_devs == 0 else [None] * num_devs
+        self.iexec = 0
 
     def update(self, labels, preds):
         """Updates the internal evaluation result.
@@ -387,16 +391,41 @@ class Accuracy(EvalMetric):
         """
         check_label_shapes(labels, preds)
 
-        for label, pred_label in zip(labels, preds):
-            if pred_label.shape != label.shape:
-                pred_label = ndarray.argmax(pred_label, axis=self.axis)
-            pred_label = pred_label.asnumpy().astype('int32')
-            label = label.asnumpy().astype('int32')
+        if self.label_pred_same_ctx:
+            for label, pred_label in zip(labels, preds):
+                if pred_label.shape != label.shape:
+                    pred_label = ndarray.argmax(pred_label, axis=self.axis)
+                pred_label = pred_label.astype('int32')
+                label = label.astype('int32')
+                assert pred_label.context == label.context,\
+                    "pred_label and label have different contexts"
 
-            check_label_shapes(label, pred_label)
+                check_label_shapes(label, pred_label)
 
-            self.sum_metric += (pred_label.flat == label.flat).sum()
-            self.num_inst += len(pred_label.flat)
+                self.num_inst += numpy.prod(pred_label.shape)
+                positive_preds = ndarray.sum(pred_label == label)
+                print 'iexec = ', self.iexec
+                print 'positive_preds = \n', positive_preds.asnumpy()
+                print '======================================'
+                if self.sum_metric_array is None:
+                    self.sum_metric += positive_preds.asnumpy()[0]
+                else:
+                    if self.sum_metric_array[self.iexec] is None:
+                        self.sum_metric_array[self.iexec] = positive_preds
+                    else:
+                        self.sum_metric_array[self.iexec] += positive_preds
+                    self.iexec = (self.iexec + 1) % len(self.sum_metric_array)
+        else:
+            for label, pred_label in zip(labels, preds):
+                if pred_label.shape != label.shape:
+                    pred_label = ndarray.argmax(pred_label, axis=self.axis)
+                pred_label = pred_label.asnumpy().astype('int32')
+                label = label.asnumpy().astype('int32')
+
+                check_label_shapes(label, pred_label)
+
+                self.sum_metric += (pred_label.flat == label.flat).sum()
+                self.num_inst += len(pred_label.flat)
 
 
 @register

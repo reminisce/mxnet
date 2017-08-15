@@ -2,6 +2,7 @@ from mxnet.test_utils import *
 import time
 import argparse
 import os
+from mxnet.metric import Accuracy
 
 parser = argparse.ArgumentParser(description="Run sparse linear regression " \
                                              "with distributed kvstore",
@@ -170,7 +171,7 @@ if __name__ == '__main__':
                            learning_rate=0.1, rescale_grad=1.0/batch_size/num_worker)
     mod.init_optimizer(optimizer=sgd, kvstore=kv)
     # use accuracy as the metric
-    metric = mx.metric.create('acc')
+    metric = Accuracy(args.num_gpu)
 
     index = mod._exec_group.param_names.index('w')
     # weight_array bound to executors of the contexts
@@ -215,7 +216,8 @@ if __name__ == '__main__':
             except StopIteration:
                 end_of_batch = True
             # accumulate prediction accuracy
-            mod.update_metric(metric, batch.label)
+            #mod.update_metric(metric, batch.label, args.num_gpu > 0)
+            mx.ndarray.waitall()
         logging.info('epoch %d, %s' % (epoch, metric.get()))
         if epoch == 0:
             print "num_batches = ", nbatch

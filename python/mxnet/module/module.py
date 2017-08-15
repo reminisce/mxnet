@@ -719,7 +719,7 @@ class Module(BaseModule):
         assert self.binded and self.params_initialized
         self._exec_group.set_states(states, value)
 
-    def update_metric(self, eval_metric, labels):
+    def update_metric(self, eval_metric, labels, use_exec_labels=False):
         """Evaluates and accumulates evaluation metric on outputs of the last forward computation.
 
         See Also
@@ -732,7 +732,7 @@ class Module(BaseModule):
         labels : list of NDArray
             Typically ``data_batch.label``.
         """
-        self._exec_group.update_metric(eval_metric, labels)
+        self._exec_group.update_metric(eval_metric, labels, use_exec_labels)
 
     def _sync_params_from_devices(self):
         """Synchronizes parameters from devices to CPU. This function should be called after

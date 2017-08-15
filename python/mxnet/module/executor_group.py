@@ -546,7 +546,7 @@ class DataParallelExecutorGroup(object):
                     out_grads_slice.append(grad.copyto(self.contexts[i]))
             exec_.backward(out_grads=out_grads_slice)
 
-    def update_metric(self, eval_metric, labels):
+    def update_metric(self, eval_metric, labels, use_exec_labels=False):
         """Accumulate the performance according to `eval_metric` on all devices
         by comparing outputs from [begin, end) to labels. By default use all
         outputs.
@@ -562,24 +562,39 @@ class DataParallelExecutorGroup(object):
         end : int or None
             Ending index of used outputs.
         """
-        for texec, islice in zip(self.execs, self.slices):
-            labels_slice = []
-            for label, axis in zip(labels, self.label_layouts):
-                if axis == 0:
-                    # slicing NDArray along axis 0 can avoid copying
-                    labels_slice.append(label[islice])
-                elif axis > 0:
-                    # pylint: disable=no-member
-                    label_my_slice = nd.slice_axis(label, axis=axis, begin=islice.start,
-                                                   end=islice.stop).as_in_context(label.context)
-                    # pylint: enable=no-member
-                    labels_slice.append(label_my_slice)
-                else:
-                    labels_slice.append(label)
+        if use_exec_labels:
+            # this condition assumes that label data has been
+            # loaded into devices while calling forward() function
+            # only use this condition when batch_data passed
+            # to the forward function has label property
+            assert self.label_arrays is not None
+            for i, texec in enumerate(self.execs):
+                labels_slice = []
+                for j, name in enumerate(self.label_names):
+                    labels_slice.append(self.label_arrays[j][i][1])
 
-            labels_ = OrderedDict(zip(self.label_names, labels_slice))
-            preds = OrderedDict(zip(self.output_names, texec.outputs))
-            eval_metric.update_dict(labels_, preds)
+                labels = OrderedDict(zip(self.label_names, labels_slice))
+                preds = OrderedDict(zip(self.output_names, texec.outputs))
+                eval_metric.update_dict(labels, preds, use_exec_labels)
+        else:
+            for texec, islice in zip(self.execs, self.slices):
+                labels_slice = []
+                for label, axis in zip(labels, self.label_layouts):
+                    if axis == 0:
+                        # slicing NDArray along axis 0 can avoid copying
+                        labels_slice.append(label[islice])
+                    elif axis > 0:
+                        # pylint: disable=no-member
+                        label_my_slice = nd.slice_axis(label, axis=axis, begin=islice.start,
+                                                       end=islice.stop).as_in_context(label.context)
+                        # pylint: enable=no-member
+                        labels_slice.append(label_my_slice)
+                    else:
+                        labels_slice.append(label)
+
+                labels_ = OrderedDict(zip(self.label_names, labels_slice))
+                preds = OrderedDict(zip(self.output_names, texec.outputs))
+                eval_metric.update_dict(labels_, preds)
 
     def _bind_ith_exec(self, i, data_shapes, label_shapes, shared_group):
         """Internal utility function to bind the i-th executor.
