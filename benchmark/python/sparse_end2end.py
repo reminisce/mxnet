@@ -176,6 +176,7 @@ if __name__ == '__main__':
     # weight_array bound to executors of the contexts
     weight_array = mod._exec_group.param_arrays[index]
 
+    mx.nd.waitall()  # sync point for initialization
     # start profiler
     if profiler:
         device = 'cpu'
@@ -215,7 +216,12 @@ if __name__ == '__main__':
             except StopIteration:
                 end_of_batch = True
             # accumulate prediction accuracy
-            mod.update_metric(metric, batch.label)
+            # comment out metrics update to eliminate asnumpy call
+            # use waitall() to replace metrics update as sync point
+            # mod.update_metric(metric, batch.label)
+            # TODO(junwu): Remove the following line and use update_metric
+            # after improving its performance
+            mx.nd.waitall()  # sync point for the current minibatch
         logging.info('epoch %d, %s' % (epoch, metric.get()))
         if epoch == 0:
             print "num_batches = ", nbatch
