@@ -183,6 +183,7 @@ def _init_ndarray_module(root_namespace):
         op_names.append(py_str(plist[i]))
 
     module_obj = _sys.modules["%s.ndarray" % root_namespace]
+    module_sparse = _sys.modules["%s.ndarray.sparse" % root_namespace]
     module_internal = _sys.modules["%s.ndarray._internal" % root_namespace]
     module_contrib = _sys.modules["%s.contrib.ndarray" % root_namespace]
     for name in op_names:
@@ -197,6 +198,12 @@ def _init_ndarray_module(root_namespace):
             setattr(module_internal, function.__name__, function)
         else:
             setattr(module_obj, function.__name__, function)
+
+        # register sparse ops under mxnet.ndarray.sparse
+        if function.__name__.startswith('_sparse_'):
+            function.__name__ = function.__name__[8:]
+            function.__module__ = 'mxnet.ndarray.sparse'
+            setattr(module_sparse, function.__name__, function)
 
 # register backend operators in mx.nd
 _init_ndarray_module("mxnet")

@@ -26,7 +26,11 @@
 namespace mxnet {
 namespace op {
 
-NNVM_REGISTER_OP(sparse_retain)
+// Add prefix "_sparse_" to prevent it from being registered
+// under mxnet.ndarray in python frontend as this op only
+// accepts row-sparse format ndarrays. It will be registered
+// under mxnet.ndarray.sparse with name sparse_retain.
+NNVM_REGISTER_OP(_sparse_sparse_retain)
 .describe(R"code(pick rows specified by user input index array from a row sparse matrix
 and save them in the output sparse matrix.
 
