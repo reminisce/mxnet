@@ -27,6 +27,8 @@ parser.add_argument('--num-gpu', type=int, default=0,
                          'otherwise, use gpu(0),...,gpu(num_gpu-1)')
 parser.add_argument('--output-dim', type=int, default=4,
                     help='number of columns of the forward output')
+parser.add_argument('--dummy-metric', type=int, default=0,
+                    help='whether to call update_metric')
 
 
 def get_libsvm_data(data_dir, data_name, url, data_origin_name):
@@ -216,12 +218,10 @@ if __name__ == '__main__':
             except StopIteration:
                 end_of_batch = True
             # accumulate prediction accuracy
-            # comment out metrics update to eliminate asnumpy call
-            # use waitall() to replace metrics update as sync point
-            # mod.update_metric(metric, batch.label)
-            # TODO(junwu): Remove the following line and use update_metric
-            # after improving its performance
-            mx.nd.waitall()  # sync point for the current minibatch
+            if args.dummy_metric == 0:
+                mod.update_metric(metric, batch.label)
+            else:  # call waitall to replace update_metric as sync point
+                mx.nd.waitall()  # sync point for the current minibatch
         logging.info('epoch %d, %s' % (epoch, metric.get()))
         if epoch == 0:
             print "num_batches = ", nbatch
