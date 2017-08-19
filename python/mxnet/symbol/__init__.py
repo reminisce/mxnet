@@ -15,10 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""NDArray module used to register sparse operators."""
+"""Symbol API of MXNet."""
 
-from .sparse_ndarray import csr_matrix, row_sparse_array
-from .sparse_ndarray import BaseSparseNDArray, RowSparseNDArray, CSRNDArray
-from .utils import _zeros_sparse_ndarray as zeros
-from .utils import _empty_sparse_ndarray as empty
-from .utils import _sparse_array as array
+from . import _internal, sparse, op
+# pylint: disable=wildcard-import, redefined-builtin
+from .symbol import *
+from ..ndarray import _GRAD_REQ_MAP

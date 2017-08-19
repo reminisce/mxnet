@@ -29,8 +29,8 @@ namespace op {
 // Add prefix "_sparse_" to prevent it from being registered
 // under mxnet.ndarray in python frontend as this op only
 // accepts row-sparse format ndarrays. It will be registered
-// under mxnet.ndarray.sparse with name sparse_retain.
-NNVM_REGISTER_OP(_sparse_sparse_retain)
+// under mxnet.ndarray.sparse with name retain.
+NNVM_REGISTER_OP(_sparse_retain)
 .describe(R"code(pick rows specified by user input index array from a row sparse matrix
 and save them in the output sparse matrix.
 
@@ -41,14 +41,14 @@ Example::
   shape = (4, 2)
   rsp_in = row_sparse(data, indices)
   to_retain = [0, 3]
-  rsp_out = sparse_retain(rsp_in, to_retain)
+  rsp_out = _sparse_retain(rsp_in, to_retain)
   rsp_out.values = [[1, 2], [5, 6]]
   rsp_out.indices = [0, 3]
 
-The storage type of ``sparse_retain`` output depends on storage types of inputs
+The storage type of ``_sparse_retain`` output depends on storage types of inputs
 
-- sparse_retain(row_sparse, default) = row_sparse
-- otherwise, ``sparse_retain`` is not supported
+- _sparse_retain(row_sparse, default) = row_sparse
+- otherwise, ``_sparse_retain`` is not supported
 
 )code" ADD_FILELINE)
 .set_num_inputs(2)

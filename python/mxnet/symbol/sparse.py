@@ -15,10 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""NDArray module used to register sparse operators."""
-
-from .sparse_ndarray import csr_matrix, row_sparse_array
-from .sparse_ndarray import BaseSparseNDArray, RowSparseNDArray, CSRNDArray
-from .utils import _zeros_sparse_ndarray as zeros
-from .utils import _empty_sparse_ndarray as empty
-from .utils import _sparse_array as array
+"""Symbol module used to register sparse operators."""

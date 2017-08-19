@@ -17,11 +17,11 @@
 
 """NDArray API of MXNet."""
 
-from . import _internal, sparse
-from . import op
+from . import _internal, sparse, op
 from .op import CachedOp
 # pylint: disable=wildcard-import, redefined-builtin
 from .ndarray import *
 from .utils import load, save, zeros, empty, array
-from .sparse_ndarray import _ndarray_cls, csr_matrix, row_sparse_array
-from .sparse_ndarray import BaseSparseNDArray, RowSparseNDArray, CSRNDArray
+from .sparse_ndarray import _ndarray_cls
+#, csr_matrix, row_sparse_array
+#from .sparse_ndarray import BaseSparseNDArray, RowSparseNDArray, CSRNDArray
