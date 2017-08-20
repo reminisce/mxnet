@@ -314,7 +314,8 @@ def test_sparse_storage_fallback():
         out = exec1.outputs[0].asnumpy()
         assert_almost_equal(out, np_softmax(x.asnumpy()), rtol=1e-4)
         exec1.backward()
-        assert_almost_equal(grad.asnumpy(), np_softmax(x.asnumpy()) - l.asnumpy(), rtol=1e-3, atol=1e-4)
+        assert_almost_equal(grad.asnumpy(), np_softmax(x.asnumpy()) - l.asnumpy(),
+                            rtol=1e-3, atol=1e-4)
 
     def check_concat(shape, lhs_stype, rhs_stype):
         x = mx.symbol.Variable('x', stype=lhs_stype)
