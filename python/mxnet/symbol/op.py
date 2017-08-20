@@ -20,7 +20,7 @@
 import sys as _sys
 import os as _os
 import ctypes
-import numpy as _numpy  # pylint: disable=unused-import
+import numpy as _numpy
 
 from mxnet.base import mx_uint, check_call, _LIB, py_str, OpHandle, c_str
 from mxnet.symbol_doc import _build_doc
