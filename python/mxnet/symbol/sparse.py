@@ -15,4 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Symbol module used to register sparse operators."""
+"""Sparse Symbol API of MXNet."""
