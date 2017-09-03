@@ -4,6 +4,7 @@ import numpy as np
 
 ctx = mx.gpu(0)
 dtype = np.int8
+dtype_ = np.float32
 n = 4
 
 def test_quantized_lrn():
@@ -52,6 +53,31 @@ def test_quantized_matmul():
     min0b = nd.array([-1.0], ctx=ctx, dtype=np.float32)
     max0b = nd.array([1.0], ctx=ctx, dtype=np.float32)
     c, min1, max1 = nd.quantized_matmul(a, b, min0a, max0a, min0b, max0b)
+
+def test_matmul():
+    m = 3
+    n = 2
+    k = 4
+
+    A = mx.sym.Variable('A')
+    B = mx.sym.Variable('B')
+    C = mx.sym.matmul(A, B, name='C')
+    # (m, n) * (n, k) = (m, k) [C = A * B]
+
+    a  = nd.uniform(low=-1.0, high=1.0, shape=(m, n), ctx=ctx, dtype=dtype_)
+    b  = nd.uniform(low=-1.0, high=1.0, shape=(n, k), ctx=ctx, dtype=dtype_)
+    dc = nd.uniform(low=-1.0, high=1.0, shape=(m, k), ctx=ctx, dtype=dtype_)
+    da = nd.zeros(shape=(m, n), ctx=ctx, dtype=dtype_)
+    db = nd.zeros(shape=(n, k), ctx=ctx, dtype=dtype_)
+    executor = C.bind(ctx, {'A': a, 'B': b}, {'A': da, 'B': db})
+    out = executor.forward(is_train=True)
+    executor.backward(out_grads=dc)
+    # (m, n) = (m, k) * (k, n) [dA = dC * B.T]
+    da_ = np.dot(dc.asnumpy(), b.asnumpy().T)
+    # (n, k) = (n, m) * (m, k) [dB = A.T * dC]
+    db_ = np.dot(a.asnumpy().T, dc.asnumpy())
+    # assert(da_, da)
+    # assert(db_, db)
 
 if __name__ == "__main__":
     test_quantized_relu()
