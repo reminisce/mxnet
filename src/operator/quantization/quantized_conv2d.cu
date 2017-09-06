@@ -123,6 +123,9 @@ class QuantizedConv2DCuDNNOp : public Operator {
       Assign(out_tensor, kWriteTo, mshadow::expr::tcast<int32_t>(out_float_tensor));
     }
 
+    // calculate the min/max range for out_data as it's a multiplication
+    // of in_data[0] and in_data[1]. Need to rescale the min/max range of out_data
+    // based on the min/max ranges of in_data[0] and in_data[1].
     mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
        in_data[2].dptr<float>(),  in_data[3].dptr<float>(),
