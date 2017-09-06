@@ -88,7 +88,7 @@ class QuantizedConv2DProp : public OperatorProperty {
     return param_.__DICT__();
   }
 
-  std::vector<std::string> ListArguments() const {
+  std::vector<std::string> ListArguments() const override {
     return {"data", "filter", "min_data", "max_data", "min_filter", "max_filter"};
   }
 
@@ -148,8 +148,7 @@ class QuantizedConv2DProp : public OperatorProperty {
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
     CHECK_EQ(in_type->size(), 6U);
-    CHECK_EQ((*in_type)[0], mshadow::kInt8)
-      << "`quantized_conv2d` only supports int8 input for now";
+    TYPE_ASSIGN_CHECK(*in_type, 0, mshadow::kInt8);
     TYPE_ASSIGN_CHECK(*in_type, 1, mshadow::kInt8);
 
     for (size_t i = 2; i < 6; ++i) {

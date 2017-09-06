@@ -94,27 +94,22 @@ inline bool DequantizeShape(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 1U);
 
-  CHECK(!shape_is_none(in_attrs->at(0)));
   for (size_t i = 1; i < 3; ++i) {
-    CHECK(shape_is_scalar(in_attrs->at(i))) << in_attrs->at(i);
+    SHAPE_ASSIGN_CHECK(*in_attrs, i, TShape({1}));
   }
 
   SHAPE_ASSIGN_CHECK(*out_attrs, 0, in_attrs->at(0));
-  return true;
+  return !shape_is_none(out_attrs->at(0));
 }
 
 inline bool DequantizeType(const nnvm::NodeAttrs& attrs,
-                         std::vector<int> *in_attrs,
-                         std::vector<int> *out_attrs) {
+                           std::vector<int> *in_attrs,
+                           std::vector<int> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 3U);
   CHECK_EQ(out_attrs->size(), 1U);
-  CHECK(in_attrs->at(0) == mshadow::kInt8 ||
-        in_attrs->at(0) == mshadow::kInt32)
-    << "`dequantize` only supports int8 or int32 input for now";
-  CHECK_EQ((*in_attrs)[1], mshadow::kFloat32)
-    << "the second input of `dequantize` should be a tensor with type of float";
-  CHECK_EQ((*in_attrs)[2], mshadow::kFloat32)
-    << "the third input of `dequantize` should be a tensor with type of float";
+  TYPE_ASSIGN_CHECK(*in_attrs, 0, mshadow::kInt8);
+  TYPE_ASSIGN_CHECK(*in_attrs, 1, mshadow::kFloat32);
+  TYPE_ASSIGN_CHECK(*in_attrs, 2, mshadow::kFloat32);
   TYPE_ASSIGN_CHECK(*out_attrs, 0, mshadow::kFloat32);
   return (*in_attrs)[0] != -1;
 }

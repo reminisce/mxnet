@@ -1187,12 +1187,20 @@ MXNET_DLL int MXSymbolInferType(SymbolHandle sym,
                                 const int **aux_type_data,
                                 int *complete);
 
-MXNET_DLL int MXQuantizeGraph(SymbolHandle sym,
-                              SymbolHandle *ret_sym,
+MXNET_DLL int MXQuantizeGraph(SymbolHandle sym_handle,
+                              SymbolHandle *ret_sym_handle,
                               mx_uint num_ignore,
                               SymbolHandle *ignore_symbols,
                               mx_uint num_offline,
                               const char **offline_params);
+
+MXNET_DLL int MXSetCalibTableToQuantizedGraph(SymbolHandle sym_handle,
+                                              const char* calib_table_type,
+                                              const mx_uint num_layers,
+                                              const char** layer_names,
+                                              const float* low_quantiles,
+                                              const float* high_quantiles,
+                                              SymbolHandle* ret_sym_handle);
 
 //--------------------------------------------
 // Part 4: Executor interface

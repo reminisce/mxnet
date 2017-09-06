@@ -566,16 +566,17 @@ int MXSymbolGrad(SymbolHandle sym, mx_uint num_wrt, const char** wrt, SymbolHand
   API_END();
 }
 
-int MXQuantizeGraph(SymbolHandle sym,
-                    SymbolHandle *ret_sym,
+int MXQuantizeGraph(SymbolHandle sym_handle,
+                    SymbolHandle *ret_sym_handle,
                     mx_uint num_ignore,
                     SymbolHandle *ignore_symbols,
                     mx_uint num_offline,
                     const char **offline_params) {
-  nnvm::Symbol *s = static_cast<nnvm::Symbol*>(sym);
+  nnvm::Symbol *s = new nnvm::Symbol();
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
-  nnvm::Graph g = Symbol2Graph(*s);
+  nnvm::Symbol *sym = static_cast<nnvm::Symbol*>(sym_handle);
+  nnvm::Graph g = Symbol2Graph(*sym);
   std::unordered_set<nnvm::NodePtr> ignore_nodes;
   for (size_t i = 0; i < num_ignore; ++i) {
     nnvm::Symbol* sym = static_cast<nnvm::Symbol*>(ignore_symbols[i]);
@@ -590,8 +591,41 @@ int MXQuantizeGraph(SymbolHandle sym,
   }
   g.attrs["offline_params"] = std::make_shared<nnvm::any>(std::move(offline));
   g = ApplyPass(std::move(g), "QuantizeGraph");
-  nnvm::Symbol *s = new nnvm::Symbol();
   s->outputs = g.outputs;
-  *ret_sym = s;
+  *ret_sym_handle = s;
+  API_END_HANDLE_ERROR(delete s);
+}
+
+int MXSetCalibTableToQuantizedGraph(SymbolHandle sym_handle,
+                                    const char* calib_table_type,
+                                    const mx_uint num_layers,
+                                    const char** layer_names,
+                                    const float* low_quantiles,
+                                    const float* high_quantiles,
+                                    SymbolHandle* ret_sym_handle) {
+  nnvm::Symbol* s = new nnvm::Symbol();
+  MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
+  API_BEGIN();
+  nnvm::Symbol* sym = static_cast<nnvm::Symbol*>(sym_handle);
+  nnvm::Graph g = Symbol2Graph(*sym);
+  std::string ct_type = calib_table_type;
+  std::string op_name_prefix = "quantized_";
+  std::unordered_map<std::string, std::pair<float, float>> calib_table;
+  for (size_t i = 0; i < num_layers; ++i) {
+    std::string layer_name;
+    if (ct_type == "int32") {
+      layer_name = layer_names[i];
+    } else if (ct_type == "float32") {
+      layer_name = op_name_prefix + layer_names[i];
+    } else {
+      LOG(FATAL) << "Unsupported calib table type: " << ct_type;
+    }
+    calib_table.emplace(layer_name, std::make_pair(low_quantiles[i], high_quantiles[i]));
+  }
+  g.attrs["calib_table"] = std::make_shared<nnvm::any>(std::move(calib_table));
+  g.attrs["calib_table_type"] = std::make_shared<nnvm::any>(std::move(ct_type));
+  g = ApplyPass(std::move(g), "SetCalibTableToQuantizedGraph");
+  s->outputs = g.outputs;
+  *ret_sym_handle = s;
   API_END_HANDLE_ERROR(delete s);
 }

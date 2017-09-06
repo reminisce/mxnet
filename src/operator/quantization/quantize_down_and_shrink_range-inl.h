@@ -17,13 +17,31 @@ namespace mxnet {
 namespace op {
 
 struct QuantizeDownAndShrinkRangeParam : public dmlc::Parameter<QuantizeDownAndShrinkRangeParam> {
+  dmlc::optional<int> min_qval;  // min quantized value calculated from calibration set
+  dmlc::optional<int> max_qval;  // max quantized value calculated from calibration set
+  dmlc::optional<float> min_fval;  // min float value calculated from calibration set
+  dmlc::optional<float> max_fval;  // max float value calculated from calibration set
   DMLC_DECLARE_PARAMETER(QuantizeDownAndShrinkRangeParam) {
+    DMLC_DECLARE_FIELD(min_qval)
+    .set_default(dmlc::optional<int>())
+    .describe("Min threshold calculated from calibration dataset and used for quantizing"
+              " down output values from quantized operators. If not set, min output"
+              " values will be calculated on the fly.");
+    DMLC_DECLARE_FIELD(max_qval)
+    .set_default(dmlc::optional<int>())
+    .describe("Max threshold calculated from calibration dataset and used for quantizing"
+              " down output values from quantized operators. If not set, max output"
+              " values will be calculated on the fly.");
+    DMLC_DECLARE_FIELD(min_fval)
+    .set_default(dmlc::optional<float>());
+    DMLC_DECLARE_FIELD(max_fval)
+    .set_default(dmlc::optional<float>());
   }
 };
 
 inline bool QuantizeDownAndShrinkRangeShape(const nnvm::NodeAttrs& attrs,
-                          std::vector<TShape> *in_attrs,
-                          std::vector<TShape> *out_attrs) {
+                                            std::vector<TShape> *in_attrs,
+                                            std::vector<TShape> *out_attrs) {
   const QuantizeDownAndShrinkRangeParam& param =
     nnvm::get<QuantizeDownAndShrinkRangeParam>(attrs.parsed);
   CHECK_EQ(in_attrs->size(), 3U);
@@ -41,8 +59,8 @@ inline bool QuantizeDownAndShrinkRangeShape(const nnvm::NodeAttrs& attrs,
 }
 
 inline bool QuantizeDownAndShrinkRangeType(const nnvm::NodeAttrs& attrs,
-                         std::vector<int> *in_attrs,
-                         std::vector<int> *out_attrs) {
+                                           std::vector<int> *in_attrs,
+                                           std::vector<int> *out_attrs) {
   const QuantizeDownAndShrinkRangeParam& param =
     nnvm::get<QuantizeDownAndShrinkRangeParam>(attrs.parsed);
   CHECK_EQ(in_attrs->size(), 3U);

@@ -123,6 +123,9 @@ struct RequantizeManyInNewRangeStruct {
   }
 };
 
+/*!
+ * \brief Get the scaling factor for converting type T to float.
+ */
 template<typename T>
 MSHADOW_XINLINE float FloatForOneQuantizedLevel(
     float range_min, float range_max) {
@@ -175,7 +178,6 @@ struct QuantizationRangeForMultiplicationStruct {
 // It assumes the row-major convention used by MXNet, and implements
 // C = A * B, like the standard BLAS GEMM interface. If the tranpose flags are
 // true, then the relevant matrix is treated as stored in column-major order.
-
 template <class T1, class T2, class T3>
 void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
                    size_t m, size_t n, size_t k, const T1* a, int32_t offset_a,
@@ -216,11 +218,10 @@ void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
   const int32_t rounding =
     (shift_c < 1) ? 0 : (1 << (shift_c - 1));
 
-  int i, j, l;
-  for (j = 0; j < n; j++) {
-    for (i = 0; i < m; i++) {
+  for (size_t j = 0; j < n; j++) {
+    for (size_t i = 0; i < m; i++) {
       int32_t total = 0;
-      for (l = 0; l < k; l++) {
+      for (size_t l = 0; l < k; l++) {
         const size_t a_index = ((i * a_i_stride) + (l * a_l_stride));
         const int32_t a_value = static_cast<int32_t>(a[a_index]) - offset_a;
         const size_t b_index = ((j * b_j_stride) + (l * b_l_stride));

@@ -41,6 +41,10 @@ here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
 .set_attr_parser(ParamParser<QuantizeParam>)
 .set_num_inputs(3)
 .set_num_outputs(3)
+.set_attr<nnvm::FListInputNames>("FListInputNames",
+  [](const NodeAttrs& attrs) {
+    return std::vector<std::string>{"input", "min_range", "max_range"};
+  })
 .set_attr<nnvm::FInferShape>("FInferShape", QuantizeShape)
 .set_attr<nnvm::FInferType>("FInferType", QuantizeType)
 .set_attr<FCompute>("FCompute<cpu>", QuantizeCompute<cpu>)

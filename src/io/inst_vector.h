@@ -28,9 +28,9 @@
 
 #include <mxnet/io.h>
 #include <mxnet/base.h>
+#include <mxnet/tensor_blob.h>
 #include <dmlc/base.h>
 #include <mshadow/tensor.h>
-#include <mshadow/tensor_blob.h>
 #include <vector>
 #include <string>
 
