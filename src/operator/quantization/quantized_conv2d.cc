@@ -36,11 +36,11 @@ Operator *QuantizedConv2DProp::CreateOperatorEx(Context ctx,
 
 MXNET_REGISTER_OP_PROPERTY(quantized_conv2d, QuantizedConv2DProp)
 .add_argument("data", "NDArray-or-Symbol", "Input data.")
-.add_argument("filter", "NDArray-or-Symbol", "Weight matrix.")
+.add_argument("weight", "NDArray-or-Symbol", "Weight matrix.")
 .add_argument("min_data", "NDArray-or-Symbol", "Minimum value of data.")
 .add_argument("max_data", "NDArray-or-Symbol", "Maximum value of data.")
-.add_argument("min_filter", "NDArray-or-Symbol", "Minimum value of filter.")
-.add_argument("max_filter", "NDArray-or-Symbol", "Maximum value of filter.")
+.add_argument("min_weight", "NDArray-or-Symbol", "Minimum value of weight.")
+.add_argument("max_weight", "NDArray-or-Symbol", "Maximum value of weight.")
 .add_arguments(QuantizedConv2DParam::__FIELDS__());
 
 NNVM_REGISTER_OP(quantized_conv2d)

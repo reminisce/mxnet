@@ -19,7 +19,7 @@ NNVM_REGISTER_OP(quantize_down_and_shrink_range)
     return std::vector<ResourceRequest>(3, ResourceRequest::kTempSpace);
   })
 // TODO(junwu): change input to data
-.add_argument("input", "NDArray-or-Symbol", "A ndarray/symbol of type `int32`")
+.add_argument("data", "NDArray-or-Symbol", "A ndarray/symbol of type `int32`")
 .add_argument("min_range", "NDArray-or-Symbol", "The original minimum scalar value "
   "in the form of float32 possibly produced for the input")
 .add_argument("max_range", "NDArray-or-Symbol", "The original maximum scalar value "

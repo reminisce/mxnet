@@ -2,9 +2,9 @@ from __future__ import absolute_import
 
 import numpy as np
 import ctypes
-from .base import _LIB, string_types, numeric_types, check_call
-from .base import c_array, py_str, c_str, mx_real_t, mx_uint
-from .base import NDArrayHandle, ExecutorHandle, SymbolHandle
+from .base import _LIB, check_call
+from .base import c_array, c_str, mx_uint
+from .base import NDArrayHandle, SymbolHandle
 from .symbol import Symbol
 from . import ndarray as nd
 from .ndarray import NDArray
@@ -76,20 +76,18 @@ class LayerOutputQuantileCollector(object):
         ndarray = NDArray(handle, writable=False)
         ndarray_np = ndarray.asnumpy().flatten()
         length = len(ndarray_np)
-        low_th = 0
-        high_th = 0
         if self.low_quantile == 0:
             low_th = np.nanmin(ndarray_np)
         else:
-            low = int(self.low_quantile * length)
-            low_th = np.partition(ndarray_np, low)[low]
+            low_idx = int(self.low_quantile * length)
+            low_th = np.partition(ndarray_np, low_idx)[low_idx]
         if self.low_quantile == 1:
             high_th = np.nanmax(ndarray_np)
         else:
-            high = int(self.high_quantile * length)
-            if high == length:
-                high = max(length-1, 0)
-            high_th = np.partition(ndarray_np, high)[high]
+            high_idx = int(self.high_quantile * length)
+            if high_idx == length:
+                high_idx = max(length-1, 0)
+            high_th = np.partition(ndarray_np, high_idx)[high_idx]
         self.quantile_dict[name] = (low_th, high_th)
 
     def reset(self, low_quantile=0.05, high_quantile=0.95, include_layer=None):
@@ -147,34 +145,4 @@ def collect_layer_output_quantiles(mod, data, collector, max_num_examples=None):
         if num_batches == 0:
             raise RuntimeError('No batches fetched from data iter')
 
-        # if num_batches > 1:
-        #     for k, v in quantile_dict.items():
-        #         quantile_dict[k] = (v[0] / float(num_batches), v[1] / float(num_batches))
-
         return quantile_dict
-
-
-# def _calibrate_model_helper(mod, data, collector, qsym, calib_table_type, max_num_examples=None):
-#     quantile_dict = collect_layer_output_quantiles(mod, data, collector, max_num_examples)
-#     return calibrate_quantized_sym(qsym, quantile_dict, calib_table_type)
-#
-#
-# def calibrate_model(mod, data, qsym, calib_table_type,
-#                     low_quantile=0.05, high_quantile=0.95,
-#                     max_num_examples=None, include_layer=None):
-#     """
-#     :param mod: A module containing the quantized symbol
-#     :param data: A data batch or dataset iterator
-#     :param calib_table_type: 'float32' or 'int32' indicating
-#     :param low_quantile:
-#     :param high_quantile:
-#     :param max_num_examples:
-#     :param include_layer:
-#     :return:
-#     """
-#     quantile_dict = collect_layer_output_quantiles(mod, data, collector, max_num_examples)
-#     return calibrate_quantized_sym(qsym, quantile_dict, calib_table_type)
-#     collector = LayerOutputQuantileCollector(low_quantile=low_quantile,
-#                                              high_quantlie=high_quantile,
-#                                              include_layer=include_layer)
-#     return _calibrate_model_helper(mod, data, collector, calib_table_type, max_num_examples)

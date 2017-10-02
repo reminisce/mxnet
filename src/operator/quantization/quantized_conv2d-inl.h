@@ -89,18 +89,18 @@ class QuantizedConv2DProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListArguments() const override {
-    return {"data", "filter", "min_data", "max_data", "min_filter", "max_filter"};
+    return {"data", "weight", "min_data", "max_data", "min_weight", "max_weight"};
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"out", "min_out", "max_out"};
+    return {"output", "min_output", "max_output"};
   }
 
   bool InferShape(std::vector<TShape> *in_shape,
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
     //   data[NCHW]: (batch,      channel,    in_height,     in_width)
-    // kernel[NCHW]: (num_filter, channel,    filter_height, filter_width)
+    // kernel[NCHW]: (num_weight, channel,    weight_height, weight_width)
     //    out[NCHW]: (batch,      num_filter, out_height,    out_width)
     using namespace mshadow;
     CHECK_EQ(in_shape->size(), 6U);

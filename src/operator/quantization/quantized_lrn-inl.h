@@ -96,7 +96,7 @@ class QuantizedLRNProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"output", "min_out", "max_out"};
+    return {"output", "min_output", "max_output"};
   }
 
   Operator* CreateOperator(Context ctx) const override {

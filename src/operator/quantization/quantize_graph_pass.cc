@@ -43,7 +43,6 @@ NodePtr InsertNode(std::string op_name,
 
 std::vector<NodeEntry> OfflineParams(std::vector<NodeEntry>&& outputs,
                                      std::unordered_set<std::string>&& offline_params) {
-
   std::string node_suffixs[3] = {"", "_min", "_max"};
   std::unordered_map<Node*, NodePtr> mirror_map;
   nnvm::NodeEntryMap<NodePtr> entry_var;
@@ -280,8 +279,10 @@ Graph SetCalibTableToQuantizedGraph(Graph&& g) {
       const auto calib_table_iter = calib_table.find(out_data_name);
       if (calib_table_iter != calib_table.end()) {
         if (calib_table_type == "int32") {
-          node->attrs.dict.emplace("min_qval", std::to_string(static_cast<int>(calib_table_iter->second.first+0.5)));
-          node->attrs.dict.emplace("max_qval", std::to_string(static_cast<int>(calib_table_iter->second.second+0.5)));
+          node->attrs.dict.emplace("min_qval",
+              std::to_string(static_cast<int>(calib_table_iter->second.first+0.5)));
+          node->attrs.dict.emplace("max_qval",
+              std::to_string(static_cast<int>(calib_table_iter->second.second+0.5)));
         } else if (calib_table_type == "float32") {
           node->attrs.dict.emplace("min_fval", std::to_string(calib_table_iter->second.first));
           node->attrs.dict.emplace("max_fval", std::to_string(calib_table_iter->second.second));

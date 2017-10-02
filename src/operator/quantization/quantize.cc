@@ -49,7 +49,7 @@ here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
 .set_attr<nnvm::FInferType>("FInferType", QuantizeType)
 .set_attr<FCompute>("FCompute<cpu>", QuantizeCompute<cpu>)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{"_quantize"})
-.add_argument("input", "NDArray-or-Symbol", "A ndarray/symbol of type `float32`")
+.add_argument("data", "NDArray-or-Symbol", "A ndarray/symbol of type `float32`")
 .add_argument("min_range", "NDArray-or-Symbol", "The minimum scalar value "
   "possibly produced for the input")
 .add_argument("max_range", "NDArray-or-Symbol", "The maximum scalar value "

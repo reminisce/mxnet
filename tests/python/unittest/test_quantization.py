@@ -90,26 +90,27 @@ def test_calibrate_quantized_sym():
     data = mx.sym.Variable('data')
     conv = mx.sym.Convolution(data=data, num_filter=1, kernel=(1, 1), no_bias=True)
     qnet = mx.quantization.quantize_graph(conv)
-    quantile_dict = {'quantized_convolution0_out': (0.05, 0.95)}
+    quantile_dict = {'quantized_convolution0_output': (0.05, 0.95)}
     cqnet = mx.quantization.calibrate_quantized_sym(qnet, quantile_dict, 'int32')
     attr_dict = cqnet.attr_dict()
     quantize_down_and_shrink_op_name = 'quantize_down_and_shrink_range_convolution0'
     assert quantize_down_and_shrink_op_name in attr_dict
     assert attr_dict[quantize_down_and_shrink_op_name]['min_qval']\
-           == str(int(quantile_dict['quantized_convolution0_out'][0] + 0.5))
+           == str(int(quantile_dict['quantized_convolution0_output'][0] + 0.5))
     assert attr_dict[quantize_down_and_shrink_op_name]['max_qval']\
-           == str(int(quantile_dict['quantized_convolution0_out'][1] + 0.5))
+           == str(int(quantile_dict['quantized_convolution0_output'][1] + 0.5))
 
-    quantile_dict = {'convolution0_out': (0.05, 0.95)}
+    quantile_dict = {'convolution0_output': (0.05, 0.95)}
     cqnet = mx.quantization.calibrate_quantized_sym(qnet, quantile_dict, 'float32')
     attr_dict = cqnet.attr_dict()
     assert quantize_down_and_shrink_op_name in attr_dict
     lhs = float(attr_dict[quantize_down_and_shrink_op_name]['min_fval'])
-    rhs = quantile_dict['convolution0_out'][0]
+    rhs = quantile_dict['convolution0_output'][0]
     assert (lhs - rhs) < 0.0001
     lhs = float(attr_dict[quantize_down_and_shrink_op_name]['max_fval'])
-    rhs = quantile_dict['convolution0_out'][1]
+    rhs = quantile_dict['convolution0_output'][1]
     assert (lhs - rhs) < 0.0001
+
 
 if __name__ == "__main__":
     import nose
