@@ -88,18 +88,6 @@ void QuantizeDownAndShrinkRangeComputeGPU(
         actual_max_float.dptr_, actual_max_quantized.dptr<SrcDType>(),
         inputs[1].dptr<float>(), inputs[2].dptr<float>());
   }
-#if 0
-  Tensor<gpu, 1, float> actual_min_float(
-    reinterpret_cast<float*>(space.dptr_), Shape1(1), s);
-  Tensor<gpu, 1, float> actual_max_float(
-    reinterpret_cast<float*>(space.dptr_) + 1, Shape1(1), s);
-  Kernel<QuantizedToFloatStruct, gpu>::Launch(s, 1,
-      actual_min_float.dptr_, actual_min_quantized.dptr<SrcDType>(),
-      inputs[1].dptr<float>(), inputs[2].dptr<float>());
-  Kernel<QuantizedToFloatStruct, gpu>::Launch(s, 1,
-      actual_max_float.dptr_, actual_max_quantized.dptr<SrcDType>(),
-      inputs[1].dptr<float>(), inputs[2].dptr<float>());
-#endif
 
   Kernel<RequantizeManyInNewRangeStruct, gpu>::Launch(s, inputs[0].Size(),
       outputs[0].dptr<DstDType>(), outputs[1].dptr<float>(), outputs[2].dptr<float>(),
