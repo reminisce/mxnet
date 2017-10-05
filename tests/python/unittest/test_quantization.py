@@ -7,11 +7,13 @@ dtype = np.int8
 dtype_ = np.float32
 n = 4
 
+
 def test_quantized_lrn():
     n = 5
     x_ = np.random.uniform(low=-100, high=100, size=(1,1,n,n))
     x = nd.array(x_, ctx=ctx, dtype=dtype)
     y = nd.quantized_lrn(x, nsize=3)
+
 
 def test_quantized_conv2d():
     x_ = np.random.uniform(low=-100, high=100, size=(4, 5, 5, 4))
@@ -26,6 +28,7 @@ def test_quantized_conv2d():
             stride=[1, 1], pad=[1, 1])
     y_ = y.asnumpy().astype(np.int32)
 
+
 def test_quantized_relu():
     a_ = np.random.uniform(low=-100, high=100, size=(n,n))
     a = nd.array(a_, ctx=ctx, dtype=dtype)
@@ -33,12 +36,14 @@ def test_quantized_relu():
     max0 = nd.array([1.0], ctx=ctx, dtype=np.float32)
     b, min1, max1 = nd.quantized_relu(a, min0, max0)
 
+
 def test_quantized_max_pool():
     a_ = np.random.uniform(low=-128, high=127, size=(1, 1, n, n))
     a = nd.array(a_, ctx=ctx, dtype=dtype)
     min0 = nd.array([-1.0], ctx=ctx, dtype=np.float32)
     max0 = nd.array([1.0], ctx=ctx, dtype=np.float32)
     b, min1, max1 = nd.quantized_max_pool(a, min0, max0, kernel=[2, 2])
+
 
 def test_quantized_matmul():
     m = 1
@@ -53,6 +58,7 @@ def test_quantized_matmul():
     min0b = nd.array([-1.0], ctx=ctx, dtype=np.float32)
     max0b = nd.array([1.0], ctx=ctx, dtype=np.float32)
     c, min1, max1 = nd.quantized_matmul(a, b, min0a, max0a, min0b, max0b)
+
 
 def test_matmul():
     m = 3
@@ -79,8 +85,33 @@ def test_matmul():
     # assert(da_, da)
     # assert(db_, db)
 
+
+def test_calibrate_quantized_sym():
+    data = mx.sym.Variable('data')
+    conv = mx.sym.Convolution(data=data, num_filter=1, kernel=(1, 1), no_bias=True)
+    qnet = mx.quantization.quantize_graph(conv)
+    quantile_dict = {'quantized_convolution0_output': (0.05, 0.95)}
+    cqnet = mx.quantization.calibrate_quantized_sym(qnet, quantile_dict, 'int32')
+    attr_dict = cqnet.attr_dict()
+    quantize_down_and_shrink_op_name = 'quantize_down_and_shrink_range_convolution0'
+    assert quantize_down_and_shrink_op_name in attr_dict
+    assert attr_dict[quantize_down_and_shrink_op_name]['min_qval']\
+           == str(int(quantile_dict['quantized_convolution0_output'][0] + 0.5))
+    assert attr_dict[quantize_down_and_shrink_op_name]['max_qval']\
+           == str(int(quantile_dict['quantized_convolution0_output'][1] + 0.5))
+
+    quantile_dict = {'convolution0_output': (0.05, 0.95)}
+    cqnet = mx.quantization.calibrate_quantized_sym(qnet, quantile_dict, 'float32')
+    attr_dict = cqnet.attr_dict()
+    assert quantize_down_and_shrink_op_name in attr_dict
+    lhs = float(attr_dict[quantize_down_and_shrink_op_name]['min_fval'])
+    rhs = quantile_dict['convolution0_output'][0]
+    assert (lhs - rhs) < 0.0001
+    lhs = float(attr_dict[quantize_down_and_shrink_op_name]['max_fval'])
+    rhs = quantile_dict['convolution0_output'][1]
+    assert (lhs - rhs) < 0.0001
+
+
 if __name__ == "__main__":
-    test_quantized_relu()
-    test_quantized_max_pool()
-    test_quantized_matmul()
-    test_quantized_conv2d()
+    import nose
+    nose.runmodule()

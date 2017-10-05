@@ -18,11 +18,11 @@ NNVM_REGISTER_OP(quantize_down_and_shrink_range)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>(3, ResourceRequest::kTempSpace);
   })
-.add_argument("input", "NDArray-or-Symbol", "A ndarray/symbol of type `float32`")
-.add_argument("min_range", "NDArray-or-Symbol", "The minimum scalar value "
-  "possibly produced for the input")
-.add_argument("max_range", "NDArray-or-Symbol", "The maximum scalar value "
-  "possibly produced for the input")
+.add_argument("data", "NDArray-or-Symbol", "A ndarray/symbol of type `int32`")
+.add_argument("min_range", "NDArray-or-Symbol", "The original minimum scalar value "
+  "in the form of float32 possibly produced for the input")
+.add_argument("max_range", "NDArray-or-Symbol", "The original maximum scalar value "
+  "in the form of float32 possibly produced for the input")
 .add_arguments(QuantizeDownAndShrinkRangeParam::__FIELDS__());
 
 }  // namespace op

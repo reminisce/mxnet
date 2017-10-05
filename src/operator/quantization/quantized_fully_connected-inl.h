@@ -44,7 +44,7 @@ class QuantizedFullyConnectedProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"out", "min_out", "max_out"};
+    return {"output", "min_output", "max_output"};
   }
 
   void Init(const std::vector<std::pair<std::string, std::string> >& kwargs) override {

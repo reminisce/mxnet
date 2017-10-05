@@ -66,7 +66,7 @@ class QuantizedMaxPoolProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"output", "min_range", "max_range"};
+    return {"output", "min_output", "max_output"};
   }
 
   bool InferShape(std::vector<TShape> *in_shape,

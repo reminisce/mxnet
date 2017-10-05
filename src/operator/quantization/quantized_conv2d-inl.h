@@ -88,19 +88,19 @@ class QuantizedConv2DProp : public OperatorProperty {
     return param_.__DICT__();
   }
 
-  std::vector<std::string> ListArguments() const {
-    return {"data", "filter", "min_data", "max_data", "min_filter", "max_filter"};
+  std::vector<std::string> ListArguments() const override {
+    return {"data", "weight", "min_data", "max_data", "min_weight", "max_weight"};
   }
 
   std::vector<std::string> ListOutputs() const override {
-    return {"out", "min_out", "max_out"};
+    return {"output", "min_output", "max_output"};
   }
 
   bool InferShape(std::vector<TShape> *in_shape,
                   std::vector<TShape> *out_shape,
                   std::vector<TShape> *aux_shape) const override {
     //   data[NCHW]: (batch,      channel,    in_height,     in_width)
-    // kernel[NCHW]: (num_filter, channel,    filter_height, filter_width)
+    // kernel[NCHW]: (num_weight, channel,    weight_height, weight_width)
     //    out[NCHW]: (batch,      num_filter, out_height,    out_width)
     using namespace mshadow;
     CHECK_EQ(in_shape->size(), 6U);
@@ -148,8 +148,7 @@ class QuantizedConv2DProp : public OperatorProperty {
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
     CHECK_EQ(in_type->size(), 6U);
-    CHECK_EQ((*in_type)[0], mshadow::kInt8)
-      << "`quantized_conv2d` only supports int8 input for now";
+    TYPE_ASSIGN_CHECK(*in_type, 0, mshadow::kInt8);
     TYPE_ASSIGN_CHECK(*in_type, 1, mshadow::kInt8);
 
     for (size_t i = 2; i < 6; ++i) {

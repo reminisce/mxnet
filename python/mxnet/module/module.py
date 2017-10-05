@@ -777,3 +777,10 @@ class Module(BaseModule):
         """Installs monitor on all executors. """
         assert self.binded
         self._exec_group.install_monitor(mon)
+
+    def set_monitor_callback(self, cb):
+        """Set monitor callback function to executor.
+        Only supports the module with only one executor."""
+        assert len(self._exec_group.execs) == 1, 'Module supports setting callback' \
+                                                 'function for only one executor'
+        self._exec_group.execs[0].set_monitor_callback(cb)
