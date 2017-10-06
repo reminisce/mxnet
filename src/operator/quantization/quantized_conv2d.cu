@@ -29,15 +29,28 @@ class QuantizedConv2DCuDNNOp : public Operator {
     cmp_type_ = mshadow::DataType<CmpType>::kCudnnFlag;
     algo_ = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
     format_ = CUDNN_TENSOR_NHWC;
+    format_nchw_ = CUDNN_TENSOR_NCHW;
+    format_nchw_vect_c_ = CUDNN_TENSOR_NCHW_VECT_C;
     init_temp_size_ = false;
     InitDescriptors(ctx, in_shape, out_shape);
   }
 
   ~QuantizedConv2DCuDNNOp() {
-    CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
-    CUDNN_CALL(cudnnDestroyTensorDescriptor(data_desc_));
-    CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
     CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc_));
+    if (param_._transpose || param_.layout == mshadow::kNHWC) {
+      CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_desc_));
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(data_desc_));
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc_));
+    } else if (param_.layout == mshadow::kNCHW) {
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(data_nchw_desc_));
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(out_nchw_desc_));
+      CUDNN_CALL(cudnnDestroyFilterDescriptor(filter_nchw_vect_c_desc_));
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(data_nchw_vect_c_desc_));
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(filter_tensor_nchw_desc_));
+      CUDNN_CALL(cudnnDestroyTensorDescriptor(filter_tensor_nchw_vect_c_desc_));
+    } else {
+      LOG(FATAL) << "Not supported";
+    }
   }
 
   virtual void Forward(const OpContext &ctx,
@@ -61,47 +74,97 @@ class QuantizedConv2DCuDNNOp : public Operator {
     int res_cnt = 0;
     // allocate workspace
     if (!init_temp_size_) GetTempSize(ctx);
+#if 0
     Tensor<gpu, 1, SrcType> workspace =
       ctx.requested[res_cnt++].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
+#endif
+    Tensor<gpu, 1, char> workspace =
+      ctx.requested[res_cnt++].get_space_typed<gpu, 1, char>(mshadow::Shape1(workspace_byte_), s);
 
     if (param_.layout == mshadow::kNCHW) {
-      TBlob data_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
-          mshadow::Shape4(dshape[N], dshape[H], dshape[W], dshape[C]), s));
-      TBlob filter_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
-          mshadow::Shape4(fshape[N], fshape[H], fshape[W], fshape[C]), s));
+      if (param_._transpose) {
+        TBlob data_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
+            mshadow::Shape4(dshape[N], dshape[H], dshape[W], dshape[C]), s));
+        TBlob filter_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
+            mshadow::Shape4(fshape[N], fshape[H], fshape[W], fshape[C]), s));
 
-      // input:  [NCHW] => [NHWC](batch, in_height, in_width, in_channels)
-      // filter: [NCHW] => [NHWC](out_channels, filter_height, filter_width, in_channels)
-      TransposeImpl<gpu>(ctx.run_ctx, data,   data_,   TShape({N, H, W, C}));
-      TransposeImpl<gpu>(ctx.run_ctx, filter, filter_, TShape({N, H, W, C}));
+        // input:  [NCHW] => [NHWC](batch, in_height, in_width, in_channels)
+        // filter: [NCHW] => [NHWC](out_channels, filter_height, filter_width, in_channels)
+        TransposeImpl<gpu>(ctx.run_ctx, data,   data_,   TShape({N, H, W, C}));
+        TransposeImpl<gpu>(ctx.run_ctx, filter, filter_, TShape({N, H, W, C}));
 
-      TBlob out_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
-          mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
-      TBlob out_tcast(ctx.requested[res_cnt++].get_space_typed<gpu, 4, int32_t>(
-          mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
-      // input:  [NHWC](batch, in_height, in_width, in_channels)
-      // filter: [HWNC](out_channels, filter_height, filter_width, in_channels)
-      // output: [NHWC](batch, out_height, out_width, out_channels)
+        TBlob out_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
+            mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
+        TBlob out_tcast(ctx.requested[res_cnt++].get_space_typed<gpu, 4, int32_t>(
+            mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
+        // input:  [NHWC](batch, in_height, in_width, in_channels)
+        // filter: [HWNC](out_channels, filter_height, filter_width, in_channels)
+        // output: [NHWC](batch, out_height, out_width, out_channels)
 
-      CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
-                                         &alpha_,
-                                         data_desc_,
-                                         data_.dptr_,
-                                         filter_desc_,
-                                         filter_.dptr_,
-                                         conv_desc_,
-                                         algo_,
-                                         workspace.dptr_,
-                                         workspace_byte_,
-                                         &beta_,
-                                         out_desc_,
-                                         out_.dptr_));
+        CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
+                                           &alpha_,
+                                           data_desc_,
+                                           data_.dptr_,
+                                           filter_desc_,
+                                           filter_.dptr_,
+                                           conv_desc_,
+                                           algo_,
+                                           workspace.dptr_,
+                                           workspace_byte_,
+                                           &beta_,
+                                           out_desc_,
+                                           out_.dptr_));
 
-      Tensor<gpu, 1, DstType> out_tensor = out_.FlatTo1D<gpu, DstType>(s);
-      Tensor<gpu, 1, int32_t> out_tcast_tensor = out_tcast.FlatTo1D<gpu, int32_t>(s);
-      Assign(out_tcast_tensor, kWriteTo, mshadow::expr::tcast<int32_t>(out_tensor));
-      // output: [NHWC](batch, out_height, out_width, out_channels) => [NCHW]
-      TransposeImpl<gpu>(ctx.run_ctx, out_tcast, out, TShape({0, 3, 1, 2}));
+        Tensor<gpu, 1, DstType> out_tensor = out_.FlatTo1D<gpu, DstType>(s);
+        Tensor<gpu, 1, int32_t> out_tcast_tensor = out_tcast.FlatTo1D<gpu, int32_t>(s);
+        Assign(out_tcast_tensor, kWriteTo, mshadow::expr::tcast<int32_t>(out_tensor));
+        // output: [NHWC](batch, out_height, out_width, out_channels) => [NCHW]
+        TransposeImpl<gpu>(ctx.run_ctx, out_tcast, out, TShape({0, 3, 1, 2}));
+      } else {
+        // data in the format CUDNN_TENSOR_NCHW_VECT_C
+        TBlob data_nchw_vect_c(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
+            mshadow::Shape4(dshape[N], dshape[C], dshape[H], dshape[W]), s));
+        // filter in the format CUDNN_TENSOR_NCHW_VECT_C
+        TBlob filter_nchw_vect_c(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
+            mshadow::Shape4(fshape[N], fshape[C], fshape[H], fshape[W]), s));
+
+        // convert data from CUDNN_TENSOR_NCHW to CUDNN_TENSOR_NCHW_VECT_C
+        CUDNN_CALL(cudnnTransformTensor(s->dnn_handle_,
+                                        &alpha_,
+                                        data_nchw_desc_,
+                                        data.dptr_,
+                                        &beta_,
+                                        data_nchw_vect_c_desc_,
+                                        data_nchw_vect_c.dptr_));
+
+        // convert filter from CUDNN_TENSOR_NCHW to CUDNN_TENSOR_NCHW_VECT_C
+        CUDNN_CALL(cudnnTransformTensor(s->dnn_handle_,
+                                        &alpha_,
+                                        filter_tensor_nchw_desc_,
+                                        filter.dptr_,
+                                        &beta_,
+                                        filter_tensor_nchw_vect_c_desc_,
+                                        filter_nchw_vect_c.dptr_));
+
+        TBlob out_float(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
+            mshadow::Shape4(oshape[N], oshape[C], oshape[H], oshape[W]), s));
+        CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
+                                           &alpha_,
+                                           data_nchw_vect_c_desc_,
+                                           data_nchw_vect_c.dptr_,
+                                           filter_nchw_vect_c_desc_,
+                                           filter_nchw_vect_c.dptr_,
+                                           conv_desc_,
+                                           algo_,
+                                           workspace.dptr_,
+                                           workspace_byte_,
+                                           &beta_,
+                                           out_nchw_desc_,
+                                           out_float.dptr_));
+        Tensor<gpu, 1, int32_t> out_tensor_int32 = out.FlatTo1D<gpu, int32_t>(s);
+        Tensor<gpu, 1, float> out_tensor_float = out_float.FlatTo1D<gpu, float>(s);
+        Assign(out_tensor_int32, kWriteTo, mshadow::expr::tcast<int32_t>(out_tensor_float));
+      }
     } else if (param_.layout == mshadow::kNHWC) {
       TBlob out_float(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
           mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
@@ -149,11 +212,8 @@ class QuantizedConv2DCuDNNOp : public Operator {
     TShape dshape =  in_shape[0];
     TShape kshape =  in_shape[1];
     TShape oshape = out_shape[0];
-    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&conv_desc_));
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&data_desc_));
-    CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
-    CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_desc_));
 
+    CUDNN_CALL(cudnnCreateConvolutionDescriptor(&conv_desc_));
     CUDNN_CALL(cudnnSetConvolution2dDescriptor(conv_desc_,
                                                param_.pad[0],
                                                param_.pad[1],
@@ -164,40 +224,112 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                                CUDNN_CROSS_CORRELATION,
                                                cmp_type_));
 
-    CUDNN_CALL(cudnnSetTensor4dDescriptor(data_desc_,
-                                          format_,
-                                          src_type_,
-                                          dshape[N],
-                                          dshape[C],
-                                          dshape[H],
-                                          dshape[W]));
-    CUDNN_CALL(cudnnSetTensor4dDescriptor(out_desc_,
-                                          format_,
-                                          dst_type_,
-                                          oshape[N],
-                                          oshape[C],
-                                          oshape[H],
-                                          oshape[W]));
-    CUDNN_CALL(cudnnSetFilter4dDescriptor(filter_desc_,
-                                          src_type_,
-                                          format_,
-                                          kshape[N],
-                                          kshape[C],
-                                          kshape[H],
-                                          kshape[W]));
+    if (param_._transpose || param_.layout == mshadow::kNHWC) {
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&data_desc_));
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc_));
+      CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_desc_));
+
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(data_desc_,
+                                            format_,
+                                            src_type_,
+                                            dshape[N],
+                                            dshape[C],
+                                            dshape[H],
+                                            dshape[W]));
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(out_desc_,
+                                            format_,
+                                            dst_type_,
+                                            oshape[N],
+                                            oshape[C],
+                                            oshape[H],
+                                            oshape[W]));
+      CUDNN_CALL(cudnnSetFilter4dDescriptor(filter_desc_,
+                                            src_type_,
+                                            format_,
+                                            kshape[N],
+                                            kshape[C],
+                                            kshape[H],
+                                            kshape[W]));
+    } else if (param_.layout == mshadow::kNCHW) {
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&data_nchw_desc_));
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&out_nchw_desc_));
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&data_nchw_vect_c_desc_));  // for data tensor conversion
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&filter_tensor_nchw_desc_));  // for filter tensor conversion
+      CUDNN_CALL(cudnnCreateTensorDescriptor(&filter_tensor_nchw_vect_c_desc_));  // for filter tensor conversion
+      CUDNN_CALL(cudnnCreateFilterDescriptor(&filter_nchw_vect_c_desc_));  // for forward convolution
+
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(data_nchw_desc_,
+                                            format_nchw_,
+                                            src_type_,
+                                            dshape[N],
+                                            dshape[C],
+                                            dshape[H],
+                                            dshape[W]));
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(filter_tensor_nchw_desc_,
+                                            format_nchw_,
+                                            src_type_,
+                                            kshape[N],
+                                            kshape[C],
+                                            kshape[H],
+                                            kshape[W]));
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(out_nchw_desc_,
+                                            format_nchw_,
+                                            dst_type_,
+                                            oshape[N],
+                                            oshape[C],
+                                            oshape[H],
+                                            oshape[W]));
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(data_nchw_vect_c_desc_,
+                                            format_nchw_vect_c_,
+                                            CUDNN_DATA_INT8x4,
+                                            dshape[N],
+                                            dshape[C],
+                                            dshape[H],
+                                            dshape[W]));
+      CUDNN_CALL(cudnnSetTensor4dDescriptor(filter_tensor_nchw_vect_c_desc_,
+                                            format_nchw_vect_c_,
+                                            CUDNN_DATA_INT8x4,
+                                            kshape[N],
+                                            kshape[C],
+                                            kshape[H],
+                                            kshape[W]));
+      CUDNN_CALL(cudnnSetFilter4dDescriptor(filter_nchw_vect_c_desc_,
+                                            CUDNN_DATA_INT8x4,
+                                            format_nchw_vect_c_,
+                                            kshape[N],
+                                            kshape[C],
+                                            kshape[H],
+                                            kshape[W]));
+    } else {
+      LOG(FATAL) << "Not supported";
+    }
   }
 
   void GetTempSize(const OpContext& ctx) {
     CHECK(!init_temp_size_)
       << "GetTempSize should only be called once.";
     mshadow::Stream<gpu> *s = ctx.get_stream<gpu>();
-    CUDNN_CALL(cudnnGetConvolutionForwardWorkspaceSize(s->dnn_handle_,
-                                                       data_desc_,
-                                                       filter_desc_,
-                                                       conv_desc_,
-                                                       out_desc_,
-                                                       algo_,
-                                                       &workspace_byte_));
+    if (param_._transpose || param_.layout == mshadow::kNHWC) {
+      CUDNN_CALL(cudnnGetConvolutionForwardWorkspaceSize(s->dnn_handle_,
+                                                         data_desc_,
+                                                         filter_desc_,
+                                                         conv_desc_,
+                                                         out_desc_,
+                                                         algo_,
+                                                         &workspace_byte_));
+      LOG(INFO) << "NHWC workspace" << workspace_byte_;
+    } else if (param_.layout == mshadow::kNCHW) {
+      CUDNN_CALL(cudnnGetConvolutionForwardWorkspaceSize(s->dnn_handle_,
+                                                         data_nchw_vect_c_desc_,
+                                                         filter_nchw_vect_c_desc_,
+                                                         conv_desc_,
+                                                         out_nchw_desc_,
+                                                         algo_,
+                                                         &workspace_byte_));
+      LOG(INFO) << "NCHW workspace" << workspace_byte_;
+    } else {
+      LOG(FATAL) << "Not supported";
+    }
     workspace_ = workspace_byte_ / sizeof(SrcType) + 1;
     init_temp_size_ = true;
   }
@@ -212,10 +344,20 @@ class QuantizedConv2DCuDNNOp : public Operator {
   cudnnDataType_t dst_type_;
   cudnnDataType_t cmp_type_;
   cudnnTensorFormat_t format_;
+  cudnnTensorFormat_t format_nchw_;  // NCHW
+  cudnnTensorFormat_t format_nchw_vect_c_;  // NCHW_VECT_C for INT8x4
   cudnnConvolutionDescriptor_t conv_desc_;
   cudnnTensorDescriptor_t data_desc_;
   cudnnFilterDescriptor_t filter_desc_;
   cudnnTensorDescriptor_t out_desc_;
+
+  cudnnTensorDescriptor_t data_nchw_desc_;
+  cudnnTensorDescriptor_t out_nchw_desc_;
+  cudnnTensorDescriptor_t data_nchw_vect_c_desc_;
+  cudnnTensorDescriptor_t filter_tensor_nchw_vect_c_desc_;
+  cudnnTensorDescriptor_t filter_tensor_nchw_desc_;
+  cudnnFilterDescriptor_t filter_nchw_vect_c_desc_;
+
   cudnnConvolutionFwdAlgo_t algo_;
   uint32_t N, H, W, C;
   float alpha_ = 1.0f;

@@ -30,6 +30,8 @@ struct QuantizedConv2DParam :
   bool cudnn_off;
   uint32_t num_group;
   uint64_t workspace;
+  // TODO(junwu): Delete this variable
+  bool _transpose;
   DMLC_DECLARE_PARAMETER(QuantizedConv2DParam) {
     DMLC_DECLARE_FIELD(kernel);
     DMLC_DECLARE_FIELD(stride)
@@ -63,6 +65,8 @@ struct QuantizedConv2DParam :
     .describe("Number of group partitions.");
     DMLC_DECLARE_FIELD(workspace).set_default(1024).set_range(0, 8192)
     .describe("Maximum temporary workspace allowed for convolution (MB).");
+    DMLC_DECLARE_FIELD(_transpose).set_default(false)
+    .describe("Control whether to use the forward algorithm with transposition or not.");
   }
 };
 
@@ -174,7 +178,7 @@ class QuantizedConv2DProp : public OperatorProperty {
 
   std::vector<ResourceRequest> ForwardResource(
       const std::vector<TShape> &in_shape) const override {
-    return std::vector<ResourceRequest>(5, ResourceRequest::kTempSpace);
+    return std::vector<ResourceRequest>(param_._transpose? 5 : 4, ResourceRequest::kTempSpace);
   }
 
   Operator* CreateOperator(Context ctx) const override {
