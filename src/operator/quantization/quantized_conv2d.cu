@@ -48,7 +48,6 @@ class QuantizedConv2DCuDNNOp : public Operator {
       CUDNN_CALL(cudnnDestroyTensorDescriptor(data_nchw_vect_c_desc_));
       CUDNN_CALL(cudnnDestroyTensorDescriptor(filter_tensor_nchw_desc_));
       CUDNN_CALL(cudnnDestroyTensorDescriptor(filter_tensor_nchw_vect_c_desc_));
-      CUDNN_CALL(cudnnDestroyTensorDescriptor(out_nchw_vect_c_desc_));
     } else {
       LOG(FATAL) << "Not supported";
     }
@@ -146,13 +145,9 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                         &beta_,
                                         filter_tensor_nchw_vect_c_desc_,
                                         filter_nchw_vect_c.dptr_));
-#if 0
+
         TBlob out_float(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
             mshadow::Shape4(oshape[N], oshape[C], oshape[H], oshape[W]), s));
-#endif
-        TBlob out_nchw_vect_c(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
-            mshadow::Shape4(oshape[N], oshape[C], oshape[H], oshape[W]), s));
-
         CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
                                            &alpha_,
                                            data_nchw_vect_c_desc_,
@@ -164,20 +159,11 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                            workspace.dptr_,
                                            workspace_byte_,
                                            &beta_,
-                                           out_nchw_vect_c_desc_,
-                                           out_nchw_vect_c.dptr_));
-        CUDNN_CALL(cudnnTransformTensor(s->dnn_handle_,
-                                        &alpha_,
-                                        out_nchw_vect_c_desc_,
-                                        out_nchw_vect_c.dptr_,
-                                        &beta_,
-                                        out_nchw_desc_,
-                                        out.dptr_));
-#if 0
+                                           out_nchw_desc_,
+                                           out_float.dptr_));
         Tensor<gpu, 1, int32_t> out_tensor_int32 = out.FlatTo1D<gpu, int32_t>(s);
         Tensor<gpu, 1, float> out_tensor_float = out_float.FlatTo1D<gpu, float>(s);
         Assign(out_tensor_int32, kWriteTo, mshadow::expr::tcast<int32_t>(out_tensor_float));
-#endif
       }
     } else if (param_.layout == mshadow::kNHWC) {
       TBlob out_float(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
@@ -267,7 +253,6 @@ class QuantizedConv2DCuDNNOp : public Operator {
     } else if (param_.layout == mshadow::kNCHW) {
       CUDNN_CALL(cudnnCreateTensorDescriptor(&data_nchw_desc_));
       CUDNN_CALL(cudnnCreateTensorDescriptor(&out_nchw_desc_));
-      CUDNN_CALL(cudnnCreateTensorDescriptor(&out_nchw_vect_c_desc_));  // for forward convolution
       CUDNN_CALL(cudnnCreateTensorDescriptor(&data_nchw_vect_c_desc_));  // for data tensor conversion
       CUDNN_CALL(cudnnCreateTensorDescriptor(&filter_tensor_nchw_desc_));  // for filter tensor conversion
       CUDNN_CALL(cudnnCreateTensorDescriptor(&filter_tensor_nchw_vect_c_desc_));  // for filter tensor conversion
@@ -289,20 +274,11 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                             kshape[W]));
       CUDNN_CALL(cudnnSetTensor4dDescriptor(out_nchw_desc_,
                                             format_nchw_,
-                                            CUDNN_DATA_INT32,
-                                            oshape[N],
-                                            oshape[C],
-                                            oshape[H],
-                                            oshape[W]));
-#if 0
-      CUDNN_CALL(cudnnSetTensor4dDescriptor(out_nchw_desc_,
-                                            format_nchw_,
                                             dst_type_,
                                             oshape[N],
                                             oshape[C],
                                             oshape[H],
                                             oshape[W]));
-#endif
       CUDNN_CALL(cudnnSetTensor4dDescriptor(data_nchw_vect_c_desc_,
                                             format_nchw_vect_c_,
                                             CUDNN_DATA_INT8x4,
@@ -324,13 +300,6 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                             kshape[C],
                                             kshape[H],
                                             kshape[W]));
-      CUDNN_CALL(cudnnSetTensor4dDescriptor(out_nchw_vect_c_desc_,
-                                            format_nchw_vect_c_,
-                                            CUDNN_DATA_INT8x4,
-                                            oshape[N],
-                                            oshape[C],
-                                            oshape[H],
-                                            oshape[W]));
     } else {
       LOG(FATAL) << "Not supported";
     }
@@ -354,7 +323,7 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                                          data_nchw_vect_c_desc_,
                                                          filter_nchw_vect_c_desc_,
                                                          conv_desc_,
-                                                         out_nchw_vect_c_desc_,
+                                                         out_nchw_desc_,
                                                          algo_,
                                                          &workspace_byte_));
       LOG(INFO) << "NCHW workspace" << workspace_byte_;
@@ -388,7 +357,6 @@ class QuantizedConv2DCuDNNOp : public Operator {
   cudnnTensorDescriptor_t filter_tensor_nchw_vect_c_desc_;
   cudnnTensorDescriptor_t filter_tensor_nchw_desc_;
   cudnnFilterDescriptor_t filter_nchw_vect_c_desc_;
-  cudnnTensorDescriptor_t out_nchw_vect_c_desc_;
 
   cudnnConvolutionFwdAlgo_t algo_;
   uint32_t N, H, W, C;
