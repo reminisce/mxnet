@@ -174,7 +174,13 @@ class QuantizedConv2DProp : public OperatorProperty {
 
   std::vector<ResourceRequest> ForwardResource(
       const std::vector<TShape> &in_shape) const override {
-    return std::vector<ResourceRequest>(5, ResourceRequest::kTempSpace);
+    int num_reqs = 0;
+    if (param_.layout == mshadow::kNCHW) {
+      num_reqs = 5;
+    } else if (param_.layout == mshadow::kNHWC) {
+      num_reqs = 2;
+    }
+    return std::vector<ResourceRequest>(num_reqs, ResourceRequest::kTempSpace);
   }
 
   Operator* CreateOperator(Context ctx) const override {
