@@ -144,7 +144,6 @@ calib_table_type = 'float32'
 cqsym = mx.quantization.calibrate_quantized_sym(qsym, quantile_dict, calib_table_type)
 sym_file_name = 'resnet152-int8-calibrated-symbol.json'
 print('Saving resnet152 int8 calibrated symbol into file %s' % sym_file_name)
-sym_file_name = 'resnet152-int8-calibrated.json'
 cqsym.save(sym_file_name)
 
 
