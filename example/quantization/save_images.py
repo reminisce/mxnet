@@ -70,6 +70,8 @@ batch_id = 0
 while batch_id >= 0:
     data_iter.reset()
     batch_id = int(input("Enter batch id: "))
+    if batch_id < 0:
+        exit(0)
     data_iter = advance_data_iter(data_iter, batch_id)
     batch = data_iter.next()
     data_iter.reset()
