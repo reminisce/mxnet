@@ -8,13 +8,13 @@ from mxnet.quantization import *
 
 
 parser = argparse.ArgumentParser(description='score a model on a dataset')
-parser.add_argument('--model', type=str, required=True,
-                    help = 'the model name.')
+#parser.add_argument('--model', type=str, required=True,
+#                    help = 'the model name.')
 parser.add_argument('--gpus', type=str, default='0')
 parser.add_argument('--batch-size', type=int, default=32)
-parser.add_argument('--rgb-mean', type=str, default='0,0,0')
+parser.add_argument('--rgb-mean', type=str, default='128,128,128')
 parser.add_argument('--data-val', type=str, required=True)
-parser.add_argument('--image-shape', type=str, default='3,224,224')
+parser.add_argument('--image-shape', type=str, default='3,299,299')
 parser.add_argument('--data-nthreads', type=int, default=4,
                     help='number of threads for data decoding')
 parser.add_argument('--low-quantile', type=float, default=0)
@@ -39,7 +39,7 @@ data_nthreads = args.data_nthreads
 data_val = args.data_val
 gpus = args.gpus
 image_shape = args.image_shape
-model = args.model
+#model = args.model
 rgb_mean = args.rgb_mean
 
 logger = logging.getLogger()
@@ -60,7 +60,8 @@ elif rgb_mean is not None:
 
 
 #data_filename = 'val-5k-256.rec'
-data_filename = 'val_256_q90.rec'
+#data_filename = 'val_256_q90.rec'
+data_filename = 'val_480_q95.rec'
 data_dirname = 'data'
 data_val = data_dirname + '/' + data_filename
 url = 'http://data.mxnet.io/data/' + data_filename
@@ -80,23 +81,31 @@ data = mx.io.ImageRecordIter(
     preprocess_threads = data_nthreads,
     batch_size         = batch_size,
     data_shape         = data_shape,
+    resize=299,
     label_name         = label_name,
     rand_crop          = False,
     rand_mirror        = False,
     **mean_args)
 
 
-if isinstance(model, str):
-    # download model
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    (prefix, epoch) = modelzoo.download_model(
-        model, os.path.join(dir_path, 'model'))
-    sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
-elif isinstance(model, tuple) or isinstance(model, list):
-    assert len(model) == 3
-    (sym, arg_params, aux_params) = model
-else:
-    raise TypeError('model type [%s] is not supported' % str(type(model)))
+# if isinstance(model, str):
+#     # download model
+#     dir_path = os.path.dirname(os.path.realpath(__file__))
+#     (prefix, epoch) = modelzoo.download_model(
+#         model, os.path.join(dir_path, 'model'))
+#     sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
+# elif isinstance(model, tuple) or isinstance(model, list):
+#     assert len(model) == 3
+#     (sym, arg_params, aux_params) = model
+# else:
+#     raise TypeError('model type [%s] is not supported' % str(type(model)))
+
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+model_name = 'Inception-7'
+prefix = os.path.join(os.path.join(dir_path, 'model'), model_name)
+epoch = 1
+sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
 
 # create module
 if gpus == '':
@@ -157,7 +166,7 @@ print('Running FP32 model for inference...')
 data.reset()
 # make sure that fp32 inference works on the same images as calibrated quantized model
 data = advance_data_iter(data, num_infer_image_offset / batch_size)
-score(sym, arg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
+#score(sym, arg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
 data.reset()
 print('Finished running FP32 model for inference')
 print('\n')
@@ -168,7 +177,7 @@ print('====================================================================\n')
 # cudnn int8 convolution only support channels a multiple of 4
 # have to ignore quantizing conv0 node
 ignore_symbols = []
-ignore_sym_names = ['conv0']
+ignore_sym_names = ['conv_conv2d']
 for name in ignore_sym_names:
     nodes = sym.get_internals()
     idx = nodes.list_outputs().index(name + '_output')
