@@ -3,7 +3,7 @@ import mxnet as mx
 import logging
 
 parser = argparse.ArgumentParser(description='score a model on a dataset')
-parser.add_argument('--rgb-mean', type=str, default='0,0,0')
+parser.add_argument('--rgb-mean', type=str, default='128,128,128')
 parser.add_argument('--batch-size', type=int, default=32)
 parser.add_argument('--image-shape', type=str, default='3,299,299')
 parser.add_argument('--data-nthreads', type=int, default=32,
@@ -48,6 +48,7 @@ data_iter = mx.io.ImageRecordIter(path_imgrec=data_val,
                                   label_name=label_name,
                                   rand_crop=False,
                                   rand_mirror=False,
+                                  scale=1./128.,
                                   **mean_args)
 
 

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
 
-fname = 'image_batch_51.nds'
+fname = 'image_batch_200.nds'
 image_id = 0
 
 dirname = '/Users/jwum/Dataset/'
@@ -16,7 +16,7 @@ print('Finished loading ndarray file')
 
 for i in range(images.shape[0]):
     image = images[i].asnumpy()
-    print(image.shape)
+    print(image)
     image = np.moveaxis(image, 0, -1)
     imgplot = plt.imshow(image)
     plt.show()

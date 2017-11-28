@@ -21,6 +21,7 @@ struct QuantizedPoolingParam : public dmlc::Parameter<QuantizedPoolingParam> {
   TShape pad;
   int layout;
   int pool_type;
+  bool global_pool;
   DMLC_DECLARE_PARAMETER(QuantizedPoolingParam) {
     DMLC_DECLARE_FIELD(kernel)
     .enforce_nonzero()
@@ -44,6 +45,10 @@ struct QuantizedPoolingParam : public dmlc::Parameter<QuantizedPoolingParam> {
     .add_enum("max", pool_enum::kMaxPooling)
     .add_enum("avg", pool_enum::kAvgPooling)
     .describe("Pooling type to be applied.");
+
+    DMLC_DECLARE_FIELD(global_pool)
+    .set_default(false)
+    .describe("Ignore kernel size, do global pooling based on current input feature map.");
   }
 };
 
@@ -108,10 +113,15 @@ class QuantizedPoolingProp : public OperatorProperty {
     // only support valid convention
     oshape[N] = dshape[N];
     oshape[C] = dshape[C];
-    oshape[H] = 1 + (dshape[H] + 2 * param_.pad[0] - param_.kernel[0]) /
-        param_.stride[0];
-    oshape[W] = 1 + (dshape[W] + 2 * param_.pad[1] - param_.kernel[1]) /
-        param_.stride[1];
+    if (param_.global_pool) {
+      oshape[H] = 1;
+      oshape[W] = 1;
+    } else {
+      oshape[H] = 1 + (dshape[H] + 2 * param_.pad[0] - param_.kernel[0]) /
+          param_.stride[0];
+      oshape[W] = 1 + (dshape[W] + 2 * param_.pad[1] - param_.kernel[1]) /
+          param_.stride[1];
+    }
 
     CHECK(shape_is_scalar(in_shape->at(1)));
     CHECK(shape_is_scalar(in_shape->at(2)));

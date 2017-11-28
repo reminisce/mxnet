@@ -116,15 +116,15 @@ class QuantizedPoolCuDNNOp : public Operator {
                                           oshape[H],
                                           oshape[W]));
     CUDNN_CALL(cudnnSetPooling2dDescriptor(
-      pool_desc_,
-      mode_,
-      nan_prop_,
-      param_.kernel[0],
-      param_.kernel[1],
-      param_.pad[0],
-      param_.pad[1],
-      param_.stride[0],
-      param_.stride[1]));
+        pool_desc_,
+        mode_,
+        nan_prop_,
+        param_.global_pool ? dshape[2] : param_.kernel[0],
+        param_.global_pool ? dshape[3] : param_.kernel[1],
+        param_.pad[0],
+        param_.pad[1],
+        param_.global_pool ? 1 : param_.stride[0],
+        param_.global_pool ? 1 :param_.stride[1]));
   }
   bool init_cudnn_;
   uint32_t N, H, W, C;

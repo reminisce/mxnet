@@ -65,10 +65,12 @@ class QuantizedReluCuDNNOp : public Operator {
     //       FloatToQuantized<DType>(0.0f, *imin_range, *imax_range);
     // double threshold = static_cast<double>(zero_as_quantized);
     // LOG(INFO) << "threshold: " << threshold;
+#if 0
     CUDNN_CALL(cudnnSetActivationDescriptor(act_desc_,
                                             mode_,
                                             nan_prop_,
                                             0.0f));
+#endif
     CUDNN_CALL(cudnnActivationForward(s->dnn_handle_,
                                       act_desc_,
                                       &alpha_,
@@ -116,6 +118,10 @@ class QuantizedReluCuDNNOp : public Operator {
                                           shape[1],
                                           shape[2],
                                           shape[3]));
+    CUDNN_CALL(cudnnSetActivationDescriptor(act_desc_,
+                                            mode_,
+                                            nan_prop_,
+                                            0.0f));
   }
 };  // class QuantizedReluCuDNNOp
 
