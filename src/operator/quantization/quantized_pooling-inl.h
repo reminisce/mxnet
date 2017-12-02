@@ -11,11 +11,49 @@
 #include <mxnet/operator_util.h>
 #include "../operator_common.h"
 #include "../nn/pool.h"
+#include "../pooling-inl.h"
 
 namespace mxnet {
 namespace op {
 
 struct QuantizedPoolingParam : public dmlc::Parameter<QuantizedPoolingParam> {
+  TShape kernel;
+  TShape stride;
+  TShape pad;
+  int pool_type;
+  int pooling_convention;
+  bool global_pool;
+  bool cudnn_off;
+  DMLC_DECLARE_PARAMETER(QuantizedPoolingParam) {
+    DMLC_DECLARE_FIELD(global_pool).set_default(false)
+    .describe("Ignore kernel size, do global pooling based on current input feature map. ");
+
+    DMLC_DECLARE_FIELD(cudnn_off).set_default(false)
+    .describe("Turn off cudnn pooling and use MXNet pooling operator. ");
+
+    DMLC_DECLARE_FIELD(kernel)
+    .enforce_nonzero()
+    .describe("pooling kernel size: (y, x) or (d, y, x)");
+
+    DMLC_DECLARE_FIELD(pool_type)
+    .add_enum("max", pool_enum::kMaxPooling)
+    .add_enum("avg", pool_enum::kAvgPooling)
+    .add_enum("sum", pool_enum::kSumPooling)
+    .describe("Pooling type to be applied.");
+
+    DMLC_DECLARE_FIELD(pooling_convention).set_default(pool_enum::kValid)
+    .add_enum("full", pool_enum::kFull)
+    .add_enum("valid", pool_enum::kValid)
+    .describe("Pooling convention to be applied.");
+
+    DMLC_DECLARE_FIELD(stride).set_default(TShape())
+    .enforce_nonzero()
+    .describe("stride: for pooling (y, x) or (d, y, x)");
+
+    DMLC_DECLARE_FIELD(pad).set_default(TShape())
+    .describe("pad for pooling: (y, x) or (d, y, x)");
+  }
+#if 0
   TShape kernel;
   TShape stride;
   TShape pad;
@@ -50,6 +88,7 @@ struct QuantizedPoolingParam : public dmlc::Parameter<QuantizedPoolingParam> {
     .set_default(false)
     .describe("Ignore kernel size, do global pooling based on current input feature map.");
   }
+#endif
 };
 
 template<typename xpu>
@@ -90,6 +129,9 @@ class QuantizedPoolingProp : public OperatorProperty {
         << "quantized_pooling: Input data should be 4D in "
         << "(batch, channel, y, x)";
     int N = -1, H = -1, W = -1, C = -1;
+    // TODO(junwu): Support NHWC in the future
+    N = 0, H = 2, W = 3, C = 1;
+#if 0
     if (param_.layout == mshadow::kNCHW) {
       N = 0, H = 2, W = 3, C = 1;
     } else if (param_.layout == mshadow::kNHWC) {
@@ -97,6 +139,7 @@ class QuantizedPoolingProp : public OperatorProperty {
     } else {
       LOG(FATAL) << "not support other layout for now";
     }
+#endif
 
     TShape oshape(4);
     CHECK_EQ(param_.kernel.ndim(), 2);

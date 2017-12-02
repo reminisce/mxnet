@@ -74,7 +74,7 @@ height, width)*.
 NNVM_REGISTER_OP(Pooling)
 .set_attr<FQuantizedOp>("FQuantizedOp", [](nnvm::NodePtr n) {
     const NodeAttrs& attrs = n->attrs;
-    PoolingParam param;
+    QuantizedPoolingParam param;
     param.Init(attrs.dict);
     nnvm::NodePtr node = nnvm::Node::Create();
     if (param.pool_type == pool_enum::kMaxPooling || param.pool_type == pool_enum::kAvgPooling) {

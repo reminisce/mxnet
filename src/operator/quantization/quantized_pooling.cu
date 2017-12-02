@@ -14,6 +14,10 @@ class QuantizedPoolCuDNNOp : public Operator {
  public:
   explicit QuantizedPoolCuDNNOp(QuantizedPoolingParam p) {
     param_ = p;
+    N = 0, H = 2, W = 3, C = 1;
+    format_ = CUDNN_TENSOR_NCHW;
+    // TODO(junwu): Support NHWC in the future
+#if 0
     if (param_.layout == mshadow::kNCHW) {
       N = 0, H = 2, W = 3, C = 1;
       format_ = CUDNN_TENSOR_NCHW;
@@ -21,6 +25,7 @@ class QuantizedPoolCuDNNOp : public Operator {
       N = 0, H = 1, W = 2, C = 3;
       format_ = CUDNN_TENSOR_NHWC;
     }
+#endif
     init_cudnn_ = false;
     alpha_ = 1.0f;
     beta_  = 0.0f;
