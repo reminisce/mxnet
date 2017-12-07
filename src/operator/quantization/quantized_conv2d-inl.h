@@ -89,7 +89,12 @@ class QuantizedConv2DProp : public OperatorProperty {
   }
 
   std::vector<std::string> ListArguments() const override {
-    return {"data", "weight", "min_data", "max_data", "min_weight", "max_weight"};
+    if (param_.no_bias) {
+      return {"data", "weight", "min_data", "max_data", "min_weight", "max_weight"};
+    } else {
+      return {"data", "weight", "bias", "min_data", "max_data",
+        "min_weight", "max_weight", "min_bias", "max_bias"};
+    }
   }
 
   std::vector<std::string> ListOutputs() const override {
@@ -103,7 +108,8 @@ class QuantizedConv2DProp : public OperatorProperty {
     // kernel[NCHW]: (num_weight, channel,    weight_height, weight_width)
     //    out[NCHW]: (batch,      num_filter, out_height,    out_width)
     using namespace mshadow;
-    CHECK_EQ(in_shape->size(), 6U);
+    CHECK_EQ(param_.num_group, 1U) << "quantized_conv2d only supports num_group=1 for now";
+    CHECK_EQ(in_shape->size(), param_.no_bias? 6U : 9U);
     CHECK(!shape_is_none(in_shape->at(0)));
     const TShape& dshape =  in_shape->at(0);
     CHECK_EQ(dshape.ndim(), 4U);
@@ -121,21 +127,26 @@ class QuantizedConv2DProp : public OperatorProperty {
     CHECK(param_.num_filter % 4 == 0)
       << "for 8bit cudnn conv, the number of channel must be multiple of 4";
 
-    TShape fshape{1, 1, 1, 1};
-    fshape[N] = param_.num_filter;
-    fshape[H] = param_.kernel[0];
-    fshape[W] = param_.kernel[1];
-    fshape[C] = dshape[C];
-    SHAPE_ASSIGN_CHECK(*in_shape, 1, fshape);
-    for (int i = 2; i < 6; ++i) {
+    TShape wshape{0, 0, 0, 0};
+    wshape[N] = param_.num_filter;
+    wshape[H] = param_.kernel[0];
+    wshape[W] = param_.kernel[1];
+    wshape[C] = dshape[C];
+    SHAPE_ASSIGN_CHECK(*in_shape, 1, wshape);
+    const int start = param_.no_bias? 2 : 3;
+    const int end = param_.no_bias? 6 : 9;
+    for (int i = start; i < end; ++i) {
       SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
+    }
+    if (!param_.no_bias) {
+      SHAPE_ASSIGN_CHECK(*in_shape, 2, Shape1(param_.num_filter));
     }
 
     TShape oshape{1, 1, 1, 1};
     oshape[N] = dshape[N];
-    oshape[C] = fshape[N];
-    oshape[H] = (AddPad(dshape[H], param_.pad[0]) - fshape[H]) / param_.stride[0] + 1;
-    oshape[W] = (AddPad(dshape[W], param_.pad[1]) - fshape[W]) / param_.stride[1] + 1;
+    oshape[C] = wshape[N];
+    oshape[H] = (AddPad(dshape[H], param_.pad[0]) - wshape[H]) / param_.stride[0] + 1;
+    oshape[W] = (AddPad(dshape[W], param_.pad[1]) - wshape[W]) / param_.stride[1] + 1;
 
     out_shape->clear();
     out_shape->push_back(oshape);
@@ -147,11 +158,16 @@ class QuantizedConv2DProp : public OperatorProperty {
   bool InferType(std::vector<int> *in_type,
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
-    CHECK_EQ(in_type->size(), 6U);
+    CHECK_EQ(in_type->size(), param_.no_bias? 6U : 9U);
     TYPE_ASSIGN_CHECK(*in_type, 0, mshadow::kInt8);
     TYPE_ASSIGN_CHECK(*in_type, 1, mshadow::kInt8);
+    if (!param_.no_bias) {
+      TYPE_ASSIGN_CHECK(*in_type, 2, mshadow::kInt8);
+    }
 
-    for (size_t i = 2; i < 6; ++i) {
+    const size_t start = param_.no_bias? 2 : 3;
+    const size_t end = param_.no_bias? 6 : 9;
+    for (size_t i = start; i < end; ++i) {
       TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
     }
 

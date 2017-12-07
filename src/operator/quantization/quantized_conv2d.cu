@@ -11,6 +11,22 @@
 namespace mxnet {
 namespace op {
 
+// value + bias_value * (range1 / limit_range1) * (limit_range2 / range2)
+struct QuantizedBiasAddStruct {
+  MSHADOW_XINLINE static void Map(int i, size_t bias_size, int32_t *out,
+    const int8_t *bias, const float *min_out, const float *max_out,
+    const float *min_bias, const float *max_bias, const size_t spatial_size) {
+    float float_for_one_out_quant  =
+      MaxAbs(*min_out, *max_out) / static_cast<double>(MaxValue<int32_t>());
+    float float_for_one_bias_quant =
+      MaxAbs(*min_bias, *max_bias) / static_cast<double>(MaxValue<int8_t>());
+    const size_t channel_id = (i / spatial_size) % bias_size;
+    out[i] = (out[i] * float_for_one_out_quant +
+              bias[channel_id] * float_for_one_bias_quant) /
+             float_for_one_out_quant;
+  }
+};
+
 template<typename SrcType, typename DstType, typename CmpType>
 class QuantizedConv2DCuDNNOp : public Operator {
  public:
@@ -46,7 +62,7 @@ class QuantizedConv2DCuDNNOp : public Operator {
                        const std::vector<TBlob> &out_data,
                        const std::vector<TBlob> &aux_args) {
     using namespace mshadow;
-    CHECK_EQ(in_data.size(), 6U);
+    CHECK_EQ(in_data.size(), param_.no_bias? 6U : 9U);
     CHECK_EQ(out_data.size(), 3U);
     Stream<gpu> *s = ctx.get_stream<gpu>();
     CHECK_EQ(s->dnn_handle_ownership_, Stream<gpu>::OwnHandle);
@@ -126,10 +142,22 @@ class QuantizedConv2DCuDNNOp : public Operator {
     // calculate the min/max range for out_data as it's a multiplication
     // of in_data[0] and in_data[1]. Need to rescale the min/max range of out_data
     // based on the min/max ranges of in_data[0] and in_data[1].
+    const size_t num_inputs = param_.no_bias ? 2 : 3;
     mxnet_op::Kernel<QuantizationRangeForMultiplicationStruct, gpu>::Launch(s, 1,
       out_data[1].dptr<float>(), out_data[2].dptr<float>(),
-       in_data[2].dptr<float>(),  in_data[3].dptr<float>(),
-       in_data[4].dptr<float>(),  in_data[5].dptr<float>());
+       in_data[num_inputs].dptr<float>(),  in_data[num_inputs+1].dptr<float>(),
+       in_data[num_inputs+2].dptr<float>(),  in_data[num_inputs+3].dptr<float>());
+
+    if (!param_.no_bias) {
+      CHECK_EQ(param_.layout, mshadow::kNCHW)
+        << "quantized_conv2d only supports NCHW when there is a bias";
+      const TBlob& bias = in_data[2];
+      mxnet_op::Kernel<QuantizedBiasAddStruct, gpu>::Launch(s, out.Size(),
+          bias.Size(), out.dptr<int32_t>(), bias.dptr<int8_t>(),
+          out_data[1].dptr<float>(), out_data[2].dptr<float>(),
+          in_data[7].dptr<float>(),  in_data[8].dptr<float>(),
+          oshape[2] * oshape[3]);
+    }
   }
 
   virtual void Backward(const OpContext &ctx,

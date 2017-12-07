@@ -10,6 +10,8 @@ fname = 'stage3_unit22_relu2_output.nds'
 fname = 'stage3_unit1_relu2_output.nds'
 fname = 'relu1_output.nds'
 fname = 'stage4_unit1_relu1_output.nds'
+fname = 'stage1_unit1_conv1_output.nds'
+fname = 'stage1_unit1_conv2_output.nds'
 image_id = 0
 
 dirname = '/Users/jwum/Dataset/'

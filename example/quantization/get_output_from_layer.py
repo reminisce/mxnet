@@ -100,7 +100,8 @@ if gpus == '':
 else:
     devs = [mx.gpu(int(i)) for i in gpus.split(',')]
 
-include_relu = lambda name: name.find('relu') >= 0
+#include_relu = lambda name: name.find('relu') >= 0
+include_relu = lambda name: name.startswith('stage1_unit1_conv')
 collector = LayerOutputCollector(include_relu)
 mod = mx.mod.Module(symbol=sym, context=devs, label_names=[label_name, ])
 mod.bind(for_training=False,

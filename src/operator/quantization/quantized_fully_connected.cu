@@ -38,9 +38,9 @@ struct QuantizedBiasAddStruct2 {
     typedef int32_t T1;
     typedef int8_t  T2;
     float float_for_one_out_quant  =
-      *max_out / static_cast<double>(MaxValue<T1>());
+      MaxAbs(*min_out, *max_out) / static_cast<double>(MaxValue<T1>());
     float float_for_one_bias_quant =
-      *max_bias / static_cast<double>(MaxValue<T2>());
+      MaxAbs(*min_bias, *max_bias) / static_cast<double>(MaxValue<T2>());
     out[i] = (out[i] * float_for_one_out_quant +
               bias[i%k] * float_for_one_bias_quant) /
              float_for_one_out_quant;
