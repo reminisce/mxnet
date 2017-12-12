@@ -3,14 +3,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 num_bins = 100
-fname = 'stage4_unit3_relu1_output.nds'
-fname = 'stage3_unit1_relu1_output.nds'
 fname = 'stage3_unit9_relu3_output.nds'
 fname = 'stage3_unit22_relu2_output.nds'
-fname = 'stage3_unit1_relu2_output.nds'
-fname = 'relu1_output.nds'
 fname = 'stage4_unit1_relu1_output.nds'
+fname = 'relu1_output.nds'
+fname = 'stage3_unit1_relu1_output.nds'
+fname = 'stage4_unit3_relu1_output.nds'
 fname = 'stage1_unit1_conv1_output.nds'
+fname = 'stage3_unit1_relu2_output.nds'
 fname = 'stage1_unit1_conv2_output.nds'
 image_id = 0
 
@@ -36,6 +36,7 @@ output_values = np.arange(start=min_val, stop=max_val, step=bin_size, dtype=np.f
 print(output_values.size)
 print(hist.size)
 plt.plot(output_values[:hist.shape[0]], hist, '*')
+plt.yscale('log')
 title_name = '%s, min_val=%.2f, max_val=%.2f\nnum_bins=%d' % (fname[:-11], min_val, max_val, num_bins)
 plt.title(title_name)
 plt.show()

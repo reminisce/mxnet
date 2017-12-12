@@ -279,13 +279,13 @@ Graph SetCalibTableToQuantizedGraph(Graph&& g) {
       const auto calib_table_iter = calib_table.find(out_data_name);
       if (calib_table_iter != calib_table.end()) {
         if (calib_table_type == "int32") {
-          node->attrs.dict.emplace("min_qval",
-              std::to_string(static_cast<int>(calib_table_iter->second.first+0.5)));
-          node->attrs.dict.emplace("max_qval",
-              std::to_string(static_cast<int>(calib_table_iter->second.second+0.5)));
+          node->attrs.dict["min_qval"] =
+              std::to_string(static_cast<int>(calib_table_iter->second.first+0.5));
+          node->attrs.dict["max_qval"] =
+              std::to_string(static_cast<int>(calib_table_iter->second.second+0.5));
         } else if (calib_table_type == "float32") {
-          node->attrs.dict.emplace("min_fval", std::to_string(calib_table_iter->second.first));
-          node->attrs.dict.emplace("max_fval", std::to_string(calib_table_iter->second.second));
+          node->attrs.dict["min_fval"] = std::to_string(calib_table_iter->second.first);
+          node->attrs.dict["max_fval"] = std::to_string(calib_table_iter->second.second);
         }
         node->op()->attr_parser(&(node->attrs));
       }
