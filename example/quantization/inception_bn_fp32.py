@@ -67,7 +67,7 @@ def download_data():
     return mx.test_utils.download(url=url, fname=data_filename, dirname=data_dirname, overwrite=False)
 
 
-print('Downloading validation dataset from %s' % url)
+logger.info('Downloading validation dataset from %s' % url)
 download_data()
 
 data = mx.io.ImageRecordIter(path_imgrec=data_val,
@@ -78,6 +78,9 @@ data = mx.io.ImageRecordIter(path_imgrec=data_val,
                              label_name=label_name,
                              rand_crop=False,
                              rand_mirror=False,
+                             shuffle=True,
+                             shuffle_chunk_seed=3982304,
+                             seed=48564309,
                              **mean_args)
 
 
@@ -138,52 +141,8 @@ def advance_data_iter(data_iter, n):
             has_next_batch = False
 
 
-print('====================================================================\n')
-# cudnn int8 convolution only support channels a multiple of 4
-# have to ignore quantizing conv0 node
-ignore_symbols = []
-ignore_sym_names = ['conv_1']
-for name in ignore_sym_names:
-    nodes = sym.get_internals()
-    idx = nodes.list_outputs().index(name + '_output')
-    ignore_symbols.append(nodes[idx])
-
-print('Quantizing the FP32 model...')
-qsym = quantize_graph(sym, ignore_symbols=ignore_symbols, offline_params=arg_params.keys())
-qsym.save('quantized-inception-bn-symbol.json')
-print('Finished quantizing the FP32 model')
-print('Quantizing parameters of the FP32 model...')
-qarg_params = quantize_params(qsym, arg_params)
-print('Finished quantizing the parameters of the FP32 model')
-
-# calibrate model by collecting quantiles from FP32 model outputs
-print('Collecting layer outputs from FP32 model...')
-include_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1
-                                                           or name.find('fc') != -1)
-mod = mx.mod.Module(symbol=sym, context=devs, label_names=[label_name, ])
-mod.bind(for_training=False,
-         data_shapes=data.provide_data,
-         label_shapes=data.provide_label)
-mod.set_params(arg_params, aux_params)
-data.reset()
-nd_dict = collect_layer_outputs(mod, data, include_layer=include_layer,
-                                max_num_examples=num_calibrated_images,
-                                logger=logger)
-data.reset()
-print('Finished collecting outputs from FP32 model...')
-
-print('Calculating optimal thresholds for quantization...')
-th_dict = mx.quantization.get_optimal_thresholds(nd_dict, logger=logger)
-print('Finished calculating optimal thresholds for quantization')
-
-print('Calibrating quantized model using FP32 outputs...')
-calib_table_type = 'float32'
-cqsym = mx.quantization.calibrate_quantized_sym(qsym, th_dict, calib_table_type)
-cqsym.save('inception_bn_calib_entropy.json')
-print('Finished calibrating quantized model using FP32 quantiles')
-
-print('Running calibrated quantized model (FP32 calibration table) for inference...')
+logger.info('Running FP32 model for inference...')
+# make sure that fp32 inference works on the same images as calibrated quantized model
 data = advance_data_iter(data, num_infer_image_offset / batch_size)
-score(cqsym, qarg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
-print('Finished running calibrated quantized model (FP32 calibration table) for inference')
-data.reset()
+score(sym, arg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
+logger.info('Finished running FP32 model for inference')
