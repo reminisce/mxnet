@@ -1,4 +1,4 @@
-"""resnet calibration using naive method (get min and max as thresholds for quantization)"""
+"""resnet calibration using kl divergence"""
 import argparse
 from common import modelzoo
 import mxnet as mx
@@ -28,7 +28,7 @@ high_quantile = args.high_quantile
 
 # number of predicted and calibrated images can be changed
 max_num_calib_batches = 50
-num_calib_batches = 5
+num_calib_batches = 10
 assert num_calib_batches <= max_num_calib_batches
 
 num_infer_batches = 500
@@ -150,21 +150,6 @@ def advance_data_iter(data_iter, n):
             has_next_batch = False
 
 
-print('\n\n')
-
-#################################################################################################
-print('====================================================================\n')
-print('Running FP32 model for inference...')
-data.reset()
-# make sure that fp32 inference works on the same images as calibrated quantized model
-data = advance_data_iter(data, num_infer_image_offset / batch_size)
-score(sym, arg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
-data.reset()
-print('Finished running FP32 model for inference')
-print('\n')
-#################################################################################################
-
-#################################################################################################
 print('====================================================================\n')
 # cudnn int8 convolution only support channels a multiple of 4
 # have to ignore quantizing conv0 node
@@ -182,72 +167,32 @@ print('Quantizing parameters of the FP32 model...')
 qarg_params = quantize_params(qsym, arg_params)
 print('Finished quantizing the parameters of the FP32 model')
 
-print('Running quantized model (INT8) for inference...')
-data.reset()
-# make sure that int8 uncalibrated inference works on the same images as calibrated quantized model
-data = advance_data_iter(data, num_infer_image_offset/batch_size)
-score(qsym, qarg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
-data.reset()
-print('Finished running quantized model (INT8) for inference')
-print('\n')
-#################################################################################################
-
-#################################################################################################
-print('====================================================================\n')
-# calibrate model by collecting quantiles from quantized model outputs
-# print('Collecting quantiles from quantized model outputs...')
-# include_layer = lambda name: name.startswith('quantized_') and name.endswith('_output')
-# collector = LayerOutputQuantileCollector(low_quantile=low_quantile,
-#                                          high_quantlie=high_quantile,
-#                                          include_layer=include_layer)
-# mod = mx.mod.Module(symbol=qsym, context=devs, label_names=[label_name, ])
-# mod.bind(for_training=False,
-#          data_shapes=data.provide_data,
-#          label_shapes=data.provide_label)
-# mod.set_params(qarg_params, aux_params)
-# data.reset()
-# #quantile_dict = mx.quantization.collect_layer_output_quantiles(mod, data, collector,
-# #                                                               max_num_examples=num_calibrated_images)
-# data.reset()
-# data = advance_data_iter(data, num_infer_image_offset/batch_size)
-# print('Finished collecting quantiles from quantized model outputs')
-# print('Calibrating quantized model using INT32 quantiles...')
-# calib_table_type = 'int32'
-# #cqsym = mx.quantization.calibrate_quantized_sym(qsym, quantile_dict, calib_table_type)
-# print('Finished calibrating quantized model')
-# print('Running calibrated quantized model (INT32 calibration table) for inference...')
-# #score(cqsym, qarg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
-# data.reset()
-# print('Finished running calibrated quantized model (INT32 calibration table) for inference')
-# print('\n')
-#################################################################################################
-
-#################################################################################################
-print('====================================================================\n')
-# calibrate model by collecting quantiles from FP32 model outputs
-print('Collecting quantiles from FP32 model outputs...')
-include_layer = lambda name: name.endswith('_output')
-collector = LayerOutputQuantileCollector(low_quantile=low_quantile,
-                                         high_quantlie=high_quantile,
-                                         include_layer=include_layer)
+print('Collecting layer outputs from FP32 model...')
+include_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1
+                                                           or name.find('sc') != -1
+                                                           or name.find('fc') != -1)
 mod = mx.mod.Module(symbol=sym, context=devs, label_names=[label_name,])
 mod.bind(for_training=False,
          data_shapes=data.provide_data,
          label_shapes=data.provide_label)
 mod.set_params(arg_params, aux_params)
 data.reset()
-quantile_dict = mx.quantization.collect_layer_output_quantiles(mod, data, collector,
-                                                               max_num_examples=num_calibrated_images)
+nd_dict = collect_layer_outputs(mod, data, include_layer=include_layer, max_num_examples=num_calibrated_images, logger=logger)
 data.reset()
-data = advance_data_iter(data, num_infer_image_offset/batch_size)
-print('Finished collecting quantiles from FP32 model outputs...')
-print('Calibrating quantized model using FP32 quantiles...')
+print('Finished collecting layer outputs from FP32 model...')
+
+print('Calculating optimal thresholds for quantization...')
+th_dict = mx.quantization.get_optimal_thresholds(nd_dict, logger=logger)
+print('Finished calculating optimal thresholds for quantization')
+
+print('Calibrating quantized model...')
 calib_table_type = 'float32'
-cqsym = mx.quantization.calibrate_quantized_sym(qsym, quantile_dict, calib_table_type)
-print('Finished calibrating quantized model using FP32 quantiles')
+cqsym = mx.quantization.calibrate_quantized_sym(qsym, th_dict, calib_table_type)
+print('Finished calibrating quantized model')
+
+data = advance_data_iter(data, num_infer_image_offset/batch_size)
 print('Running calibrated quantized model (FP32 calibration table) for inference...')
 score(cqsym, qarg_params, aux_params, data, devs, label_name, max_num_examples=num_predicted_images)
 print('Finished running calibrated quantized model (FP32 calibration table) for inference')
 data.reset()
-print('\n')
-#################################################################################################
+cqsym.save('resnet_calib_entropy-symbol.json')
