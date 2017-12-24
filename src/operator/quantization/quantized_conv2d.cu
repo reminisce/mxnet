@@ -74,27 +74,56 @@ class QuantizedConv2DCuDNNOp : public Operator {
     const TShape& fshape = filter.shape_;
     const TShape& oshape = out.shape_;
 
-    int res_cnt = 0;
     // allocate workspace
     if (!init_temp_size_) GetTempSize(ctx);
+#if 0
     Tensor<gpu, 1, SrcType> workspace =
       ctx.requested[res_cnt++].get_space_typed<gpu, 1, SrcType>(mshadow::Shape1(workspace_), s);
-
+#endif
+    const int dev_id = ctx.run_ctx.ctx.dev_id;
+    const int dev_mask = gpu::kDevMask;
     if (param_.layout == mshadow::kNCHW) {
+#if 0
       TBlob data_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
           mshadow::Shape4(dshape[N], dshape[H], dshape[W], dshape[C]), s));
       TBlob filter_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, SrcType>(
           mshadow::Shape4(fshape[N], fshape[H], fshape[W], fshape[C]), s));
-
+#endif
+      const size_t data_size = dshape.Size();
+      const size_t weight_size = fshape.Size();
+      const size_t output_size = oshape.Size();
+      size_t total_temp_bytes = (workspace_ + data_size + weight_size) * sizeof(SrcType)
+                              + output_size * (sizeof(DstType) + sizeof(int32_t));
+      Tensor<gpu, 1, char> temp_space =
+        ctx.requested[0].get_space_typed<gpu, 1, char>(mshadow::Shape1(total_temp_bytes), s);
+      char* temp_dptr = temp_space.dptr_;
+      TBlob data_(reinterpret_cast<SrcType*>(temp_dptr),
+                  TShape({dshape[N], dshape[H], dshape[W], dshape[C]}),
+                  dev_mask, DataType<SrcType>::kFlag, dev_id);
+      temp_dptr += data_size * sizeof(SrcType);
+      TBlob filter_(reinterpret_cast<SrcType*>(temp_dptr),
+                    TShape({fshape[N], fshape[H], fshape[W], fshape[C]}),
+                    dev_mask, DataType<SrcType>::kFlag, dev_id);
+      temp_dptr += weight_size * sizeof(SrcType);
+      
       // input:  [NCHW] => [NHWC](batch, in_height, in_width, in_channels)
       // filter: [NCHW] => [NHWC](out_channels, filter_height, filter_width, in_channels)
       TransposeImpl<gpu>(ctx.run_ctx, data,   data_,   TShape({N, H, W, C}));
       TransposeImpl<gpu>(ctx.run_ctx, filter, filter_, TShape({N, H, W, C}));
-
+#if 0
       TBlob out_(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
           mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
       TBlob out_tcast(ctx.requested[res_cnt++].get_space_typed<gpu, 4, int32_t>(
           mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
+#endif
+      TBlob out_(reinterpret_cast<DstType*>(temp_dptr),
+                 TShape({oshape[N], oshape[H], oshape[W], oshape[C]}),
+                 dev_mask, DataType<DstType>::kFlag, dev_id);
+      temp_dptr += output_size * sizeof(DstType);
+      TBlob out_tcast(reinterpret_cast<int32_t*>(temp_dptr),
+                      TShape({oshape[N], oshape[H], oshape[W], oshape[C]}),
+                      dev_mask, DataType<int32_t>::kFlag, dev_id);
+      temp_dptr += output_size * sizeof(int32_t);
       // input:  [NHWC](batch, in_height, in_width, in_channels)
       // filter: [HWNC](out_channels, filter_height, filter_width, in_channels)
       // output: [NHWC](batch, out_height, out_width, out_channels)
@@ -107,7 +136,7 @@ class QuantizedConv2DCuDNNOp : public Operator {
                                          filter_.dptr_,
                                          conv_desc_,
                                          algo_,
-                                         workspace.dptr_,
+                                         temp_dptr,
                                          workspace_byte_,
                                          &beta_,
                                          out_desc_,
@@ -119,6 +148,8 @@ class QuantizedConv2DCuDNNOp : public Operator {
       // output: [NHWC](batch, out_height, out_width, out_channels) => [NCHW]
       TransposeImpl<gpu>(ctx.run_ctx, out_tcast, out, TShape({0, 3, 1, 2}));
     } else if (param_.layout == mshadow::kNHWC) {
+      LOG(FATAL) << "Not implemented";
+#if 0
       TBlob out_float(ctx.requested[res_cnt++].get_space_typed<gpu, 4, DstType>(
           mshadow::Shape4(oshape[N], oshape[H], oshape[W], oshape[C]), s));
       CUDNN_CALL(cudnnConvolutionForward(s->dnn_handle_,
@@ -137,6 +168,7 @@ class QuantizedConv2DCuDNNOp : public Operator {
       Tensor<gpu, 1, DstType> out_float_tensor = out_float.FlatTo1D<gpu, DstType>(s);
       Tensor<gpu, 1, int32_t> out_tensor = out.FlatTo1D<gpu, int32_t>(s);
       Assign(out_tensor, kWriteTo, mshadow::expr::tcast<int32_t>(out_float_tensor));
+#endif
     }
 
     // calculate the min/max range for out_data as it's a multiplication
