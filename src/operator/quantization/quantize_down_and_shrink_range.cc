@@ -16,7 +16,13 @@ NNVM_REGISTER_OP(quantize_down_and_shrink_range)
 .set_attr<nnvm::FInferShape>("FInferShape", QuantizeDownAndShrinkRangeShape)
 .set_attr<nnvm::FInferType>("FInferType", QuantizeDownAndShrinkRangeType)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& attrs) {
-    return std::vector<ResourceRequest>(3, ResourceRequest::kTempSpace);
+    const QuantizeDownAndShrinkRangeParam& param =
+      nnvm::get<QuantizeDownAndShrinkRangeParam>(attrs.parsed);
+    if (param.min_fval.has_value() && param.max_fval.has_value()) {
+      return std::vector<ResourceRequest>();
+    } else {
+      return std::vector<ResourceRequest>(1, ResourceRequest::kTempSpace);
+    }
   })
 .add_argument("data", "NDArray-or-Symbol", "A ndarray/symbol of type `int32`")
 .add_argument("min_range", "NDArray-or-Symbol", "The original minimum scalar value "

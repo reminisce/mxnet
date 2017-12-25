@@ -121,6 +121,18 @@ struct RequantizeManyInNewRangeStruct {
     *omax_range =  real_range;
     output[i] = FloatToQuantized<T2>(input_float, -real_range, real_range);
   }
+
+  template<typename T1, typename T2>
+  MSHADOW_XINLINE static void Map(int i, T2 *output, float *omin_range, float *omax_range,
+      const T1 *input, const float *imin_range, const float *imax_range,
+      const float actual_min, const float actual_max) {
+
+    const float input_float = QuantizedToFloat<T1>(input[i], *imin_range, *imax_range);
+    float real_range = MaxAbs(actual_min, actual_max);
+    *omin_range = -real_range;
+    *omax_range =  real_range;
+    output[i] = FloatToQuantized<T2>(input_float, -real_range, real_range);
+  }
 };
 
 /*!
