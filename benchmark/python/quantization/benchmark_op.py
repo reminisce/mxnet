@@ -1,3 +1,4 @@
+import time
 import mxnet as mx
 from mxnet.test_utils import check_speed
 
@@ -44,34 +45,37 @@ def benchmark_convolution(data_shape, kernel, num_filter, pad, stride, no_bias=T
     print('\n')
 
 
+def benchmark_quantize(ctx, data_shape, repeat=1000):
+    data = mx.nd.uniform(low=0, high=255, shape=data_shape, ctx=ctx, dtype='float32')
+    data_min = mx.nd.min(data)
+    data_max = mx.nd.max(data)
+    mx.nd.waitall()
+    start = time.time()
+    for _ in range(repeat):
+        out, out_min, out_max = mx.nd.contrib.quantize(data, data_min, data_max, out_type='int8')
+    mx.nd.waitall()
+    print('quantize data shape=%s, time cost=%.2f ms' % (data_shape, (time.time()-start) * 1000.0 / repeat))
+
+
 if __name__ == '__main__':
+    for batch_size in [32]:
+        benchmark_quantize(mx.gpu(0), (batch_size, 3, 244, 244))
+
     for batch_size in [32, 64, 128]:
         benchmark_convolution(data_shape=(batch_size, 64, 56, 56), kernel=(1, 1), num_filter=256,
                               pad=(0, 0), stride=(1, 1), layout='NCHW', repeats=20)
-        benchmark_convolution(data_shape=(batch_size, 56, 56, 64), kernel=(1, 1), num_filter=256,
-                              pad=(0, 0), stride=(1, 1), layout='NHWC', repeats=20)
 
         benchmark_convolution(data_shape=(batch_size, 256, 56, 56), kernel=(1, 1), num_filter=64,
                               pad=(0, 0), stride=(1, 1), layout='NCHW', repeats=20)
-        benchmark_convolution(data_shape=(batch_size, 56, 56, 256), kernel=(1, 1), num_filter=64,
-                              pad=(0, 0), stride=(1, 1), layout='NHWC', repeats=20)
 
         benchmark_convolution(data_shape=(batch_size, 256, 56, 56), kernel=(1, 1), num_filter=128,
                               pad=(0, 0), stride=(2, 2), layout='NCHW', repeats=20)
-        benchmark_convolution(data_shape=(batch_size, 56, 56, 256), kernel=(1, 1), num_filter=128,
-                              pad=(0, 0), stride=(2, 2), layout='NHWC', repeats=20)
 
         benchmark_convolution(data_shape=(batch_size, 128, 28, 28), kernel=(3, 3), num_filter=128,
                               pad=(1, 1), stride=(1, 1), layout='NCHW', repeats=20)
-        benchmark_convolution(data_shape=(batch_size, 28, 28, 128), kernel=(3, 3), num_filter=128,
-                              pad=(1, 1), stride=(1, 1), layout='NHWC', repeats=20)
 
         benchmark_convolution(data_shape=(batch_size, 1024, 14, 14), kernel=(1, 1), num_filter=256,
                               pad=(0, 0), stride=(1, 1), layout='NCHW', repeats=20)
-        benchmark_convolution(data_shape=(batch_size, 14, 14, 1024), kernel=(1, 1), num_filter=256,
-                              pad=(0, 0), stride=(1, 1), layout='NHWC', repeats=20)
 
         benchmark_convolution(data_shape=(batch_size, 2048, 7, 7), kernel=(1, 1), num_filter=512,
                               pad=(0, 0), stride=(1, 1), layout='NCHW', repeats=20)
-        benchmark_convolution(data_shape=(batch_size, 7, 7, 2048), kernel=(1, 1), num_filter=512,
-                              pad=(0, 0), stride=(1, 1), layout='NHWC', repeats=20)
