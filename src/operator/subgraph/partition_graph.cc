@@ -28,6 +28,8 @@
 #include <mxnet/op_attr_types.h>
 #include <unordered_set>
 
+#include "./subgraph_op.h"
+
 namespace mxnet {
 
 void CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
@@ -55,24 +57,6 @@ NodePtr CloneVariableNode(const nnvm::Node& src) {
 }
 
 namespace sg {  // sg stands for subgraph
-
-struct SimpleNode;
-using SimpleNodePtr = std::shared_ptr<SimpleNode>;
-
-struct SimpleNode {
-  static SimpleNodePtr Create() {
-    return std::make_shared<SimpleNode>();
-  }
-  SimpleNode() : label(-1), node(nullptr) {}
-  int label;
-  nnvm::Node* node;
-  // key is node ptr
-  // value is the index array standing for the entry indices
-  // in key->inputs that use this->node as input node
-  std::unordered_map<Node*, std::vector<int>> outputs;
-  //std::unordered_map<SimpleNodePtr, int> inputs;
-  //std::unordered_map<SimpleNodePtr, int> outputs;
-};
 
 void CreateSimpleGraph(const Graph& g,
                        std::vector<SimpleNodePtr>* simple_nodes) {
@@ -123,7 +107,7 @@ void PrintSubgraph(const std::vector<SimpleNode*>& simple_nodes) {
  * can be accessed from the starting node.
  */
 void LabelSubgraph(const Graph&g,
-                   const std::unordered_set<std::string>& op_names,
+                   SubgraphSelectPtr selectFunc,
                    const int label,
                    const size_t snid,  // simple node id
                    const std::vector<SimpleNodePtr>& simple_nodes,
@@ -137,27 +121,31 @@ void LabelSubgraph(const Graph&g,
     cur_node->label = label;
     subgraph_nodes->push_back(cur_node);
     // get qualified adjacent input nodes
-    for (auto& e : cur_node->node->inputs) {
-      if (!e.node->is_variable() && op_names.count(e.node->op()->name)) {
-        const auto nid = indexed_graph.node_id(e.node.get());
-        CHECK_LT(nid, simple_nodes.size());
-        if (simple_nodes[nid]->label == -1) {  // this node has not been visited yet
-          node_queue.push(simple_nodes[nid].get());
-        } else {
-          CHECK_EQ(simple_nodes[nid]->label, label);
+    if (selectFunc->UseIncomingLink()) {
+      for (auto& e : cur_node->node->inputs) {
+        if (selectFunc->Select(*e.node, subgraph_nodes)) {
+          const auto nid = indexed_graph.node_id(e.node.get());
+          CHECK_LT(nid, simple_nodes.size());
+          // this node has not been visited yet
+          if (simple_nodes[nid]->label == -1) {
+            node_queue.push(simple_nodes[nid].get());
+          } else {
+            CHECK_EQ(simple_nodes[nid]->label, label);
+          }
         }
       }
     }
     // get qualified output nodes
-    for (auto it = cur_node->outputs.begin(); it != cur_node->outputs.end(); ++it) {
-      CHECK(!it->first->is_variable());
-      if (op_names.count(it->first->op()->name)) {
-        const auto nid = indexed_graph.node_id(it->first);
-        CHECK_LT(nid, simple_nodes.size());
-        if (simple_nodes[nid]->label == -1) {  // this node has not been visited yet
-          node_queue.push(simple_nodes[nid].get());
-        } else {
-          CHECK_EQ(simple_nodes[nid]->label, label);
+    if (selectFunc->UseOutgoingLink()) {
+      for (auto it = cur_node->outputs.begin(); it != cur_node->outputs.end(); ++it) {
+        if (selectFunc->Select(*it->first, subgraph_nodes)) {
+          const auto nid = indexed_graph.node_id(it->first);
+          CHECK_LT(nid, simple_nodes.size());
+          if (simple_nodes[nid]->label == -1) {  // this node has not been visited yet
+            node_queue.push(simple_nodes[nid].get());
+          } else {
+            CHECK_EQ(simple_nodes[nid]->label, label);
+          }
         }
       }
     }
@@ -171,7 +159,7 @@ void LabelSubgraph(const Graph&g,
  * doesn't meet the given criteria, it will be marked with a separate label.
  */
 void FindSubgraphs(const Graph& g,
-                   const std::unordered_set<std::string>& op_names,
+                   const SubgraphProperty &subgProperty,
                    const std::vector<SimpleNodePtr>& simple_nodes,
                    std::vector<std::vector<SimpleNode*>>* subgraph_nodes) {
   //CHECK(simple_nodes != nullptr);
@@ -179,9 +167,11 @@ void FindSubgraphs(const Graph& g,
   CHECK_EQ(indexed_graph.num_nodes(), simple_nodes.size());
   for (size_t i = 0; i < simple_nodes.size(); ++i) {
     nnvm::Node* node = simple_nodes[i]->node;
-    if (!node->is_variable() && simple_nodes[i]->label == -1 && op_names.count(node->op()->name)) {
+    auto selectFunc = subgProperty.CreateSubgraphSelect();
+    if (selectFunc->Select(*node, nullptr) && simple_nodes[i]->label == -1) {
       subgraph_nodes->emplace_back();
-      LabelSubgraph(g, op_names, subgraph_nodes->size() - 1, i, simple_nodes, &subgraph_nodes->back());
+      LabelSubgraph(g, selectFunc, subgraph_nodes->size() - 1, i, simple_nodes,
+                    &subgraph_nodes->back());
     }
   }
 }
@@ -267,8 +257,7 @@ Graph PartitionGraph(Graph&& g) {
     }
   });
 #endif
-  const std::unordered_set<std::string>& op_names = g.GetAttr<std::unordered_set<std::string>>("subgraph_op_names");
-  if (op_names.empty()) {  // treat the whole graph as a subgraph
+  if (!g.HasAttr("subgraph_property")) {  // treat the whole graph as a subgraph
     Symbol whole_graph_sym;
     whole_graph_sym.outputs = g.outputs;
     // DO NOT define node name for subgraph op because it would serve
@@ -298,18 +287,17 @@ Graph PartitionGraph(Graph&& g) {
     return ret;
   } else {
     using namespace sg;
+    const SubgraphProperty &subgProperty = g.GetAttr<SubgraphProperty>("subgraph_property");
     std::vector<SimpleNodePtr> simple_nodes;
     CreateSimpleGraph(g, &simple_nodes);
     std::vector<std::vector<SimpleNode*>> subgraph_nodes;
-    FindSubgraphs(g, op_names, simple_nodes, &subgraph_nodes);
-    // If the graph only has one subgraph, we don't need to do anything.
-    if (subgraph_nodes.size() == 1)
-      return g;
+    FindSubgraphs(g, subgProperty, simple_nodes, &subgraph_nodes);
     std::vector<nnvm::NodeEntry*> entries;
     // TODO(junwu): take care of the situation when the op is the last op
     for (size_t i = 0; i < subgraph_nodes.size(); ++i) {
       PrintSubgraph(subgraph_nodes[i]);
 
+      // Break the input links.
       LOG(INFO) << "Searching for input entries...";
       entries.clear();
       FindInputEntries(g, simple_nodes, subgraph_nodes[i], &entries);
@@ -320,8 +308,17 @@ Graph PartitionGraph(Graph&& g) {
       LOG(INFO) << "Searching for output entries...";
       entries.clear();
       FindOutputEntries(&g, simple_nodes, subgraph_nodes[i], &entries);
-      auto op = Op::Get("_subgraph_op");
-      nnvm::NodePtr n = CutCreateSubgraphNode(entries, op, "_subgraph_op");
+
+      // Create a subgraph.
+      nnvm::Symbol sym;
+      sym.outputs.resize(entries.size());
+      for (size_t i = 0; i < entries.size(); i++)
+        sym.outputs[i] = *entries[i];
+      nnvm::NodePtr n = subgProperty.GetSubgraphNode(sym);
+
+      // Connect the external nodes to the subgraph node.
+      for (uint32_t i = 0; i < entries.size(); i++)
+        *entries[i] = nnvm::NodeEntry{n, i, 0};
       // TODO(zhengda) this may not be the right order for input entries of a subgraph?
       n->inputs = orig_input_entries;
       PrintNodeEntries(entries);
