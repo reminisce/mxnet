@@ -30,12 +30,11 @@
 
 #include "./subgraph_op.h"
 
-namespace mxnet {
+namespace nnvm {
+NodePtr CreateVariableNode(const std::string& name);
+}
 
-void CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
-                    bool skip_var, std::vector<nnvm::NodeEntry> *orig_entries);
-nnvm::NodePtr CutCreateSubgraphNode(const std::vector<nnvm::NodeEntry *> &output_entries,
-                                    const nnvm::Op *op, const std::string &name);
+namespace mxnet {
 
 namespace op {
 
@@ -246,6 +245,29 @@ void PrintNodeEntries(const std::vector<nnvm::NodeEntry*>& entries) {
   }
 }
 
+/*
+ * Given a computation graph and a set of input node entries, this function cuts
+ * the node entries and creates new variable nodes as the input nodes of the
+ * subgraph. It returns the nodes that connect to the subgraph directly and
+ * the names of the new variable nodes.
+ */
+void CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
+                    bool skip_var, std::vector<nnvm::NodeEntry> *orig_entries) {
+  orig_entries->reserve(input_entries.size());
+  for (size_t i = 0; i < input_entries.size(); i++) {
+    nnvm::NodeEntry *e = input_entries[i];
+    // If the node is a variable itself, we may want to skip the node.
+    if (e->node->is_variable() && skip_var)
+      continue;
+
+    orig_entries->push_back(*e);
+    nnvm::Symbol sym;
+    sym.outputs.push_back(*e);
+    nnvm::NodePtr n = nnvm::CreateVariableNode(sym.ListOutputNames()[0]);
+    *e = nnvm::NodeEntry{n, 0, 0};
+  }
+}
+
 }  // namespace sg
 
 Graph PartitionGraph(Graph&& g) {
@@ -302,7 +324,7 @@ Graph PartitionGraph(Graph&& g) {
       entries.clear();
       FindInputEntries(g, simple_nodes, subgraph_nodes[i], &entries);
       std::vector<nnvm::NodeEntry> orig_input_entries;
-      CutGraphInputs(entries, false, &orig_input_entries);
+      sg::CutGraphInputs(entries, false, &orig_input_entries);
       PrintNodeEntries(entries);
 
       LOG(INFO) << "Searching for output entries...";
