@@ -63,7 +63,7 @@ std::vector<nnvm::Symbol *> GetInputSymbols(const nnvm::Symbol &sym) {
  * subgraph. It returns the nodes that connect to the subgraph directly and
  * the names of the new variable nodes.
  */
-bool CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
+void CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
                     bool skip_var, std::vector<nnvm::NodeEntry> *orig_entries) {
   orig_entries->reserve(input_entries.size());
   for (size_t i = 0; i < input_entries.size(); i++) {
@@ -78,7 +78,6 @@ bool CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
     nnvm::NodePtr n = nnvm::CreateVariableNode(sym.ListOutputNames()[0]);
     *e = nnvm::NodeEntry{n, 0, 0};
   }
-  return true;
 }
 
 /*
@@ -87,7 +86,7 @@ bool CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
  * to point to the subgraph node.
  */
 nnvm::NodePtr CutCreateSubgraphNode(const std::vector<nnvm::NodeEntry *> &output_entries,
-                                    nnvm::Op *op, const std::string &name) {
+                                    const nnvm::Op *op, const std::string &name) {
   nnvm::Symbol sym;
   sym.outputs.resize(output_entries.size());
   for (size_t i = 0; i < output_entries.size(); i++)

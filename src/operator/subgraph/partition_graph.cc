@@ -29,6 +29,12 @@
 #include <unordered_set>
 
 namespace mxnet {
+
+void CutGraphInputs(const std::vector<nnvm::NodeEntry *> &input_entries,
+                    bool skip_var, std::vector<nnvm::NodeEntry> *orig_entries);
+nnvm::NodePtr CutCreateSubgraphNode(const std::vector<nnvm::NodeEntry *> &output_entries,
+                                    const nnvm::Op *op, const std::string &name);
+
 namespace op {
 
 using nnvm::Symbol;
@@ -111,6 +117,11 @@ void PrintSubgraph(const std::vector<SimpleNode*>& simple_nodes) {
   LOG(INFO) << "Subgraph node names: " << op_names;
 }
 
+/*
+ * This function traverses the nodes in a computation graph from a starting
+ * node following the input links and output links, and marks all nodes that
+ * can be accessed from the starting node.
+ */
 void LabelSubgraph(const Graph&g,
                    const std::unordered_set<std::string>& op_names,
                    const int label,
@@ -153,7 +164,12 @@ void LabelSubgraph(const Graph&g,
   }
 }
 
-// number of subgraphs found
+/*
+ * This function finds subgraphs with all nodes that meet certain criteria.
+ * All nodes in a subgraph are marked with the same label.
+ * All nodes in a subgraph have to be connected with each other. If a node
+ * doesn't meet the given criteria, it will be marked with a separate label.
+ */
 void FindSubgraphs(const Graph& g,
                    const std::unordered_set<std::string>& op_names,
                    const std::vector<SimpleNodePtr>& simple_nodes,
@@ -185,11 +201,9 @@ void FindInputEntries(const Graph& g,
     }
     for (auto& e : subgraph_nodes[i]->node->inputs) {
       const auto nid = indexed_graph.node_id(e.node.get());
-      if (simple_nodes[nid]->label == -1) {  // this is a node not belonging to the subgraph
+      // this is a node not belonging to the subgraph
+      if (simple_nodes[nid]->label != label)
         input_entries->push_back(&e);
-      } else {
-        CHECK_EQ(simple_nodes[nid]->label, label);
-      }
     }
   }
 }
@@ -208,14 +222,15 @@ void FindOutputEntries(Graph* g,
     } else {
       CHECK_EQ(subgraph_nodes[i]->label, label);
     }
-    for (auto it = subgraph_nodes[i]->outputs.begin(); it != subgraph_nodes[i]->outputs.end(); ++it) {
+    for (auto it = subgraph_nodes[i]->outputs.begin();
+         it != subgraph_nodes[i]->outputs.end(); ++it) {
       const auto nid = indexed_graph.node_id(it->first);
-      if (simple_nodes[nid]->label == -1) {  // this is a node not belonging to the subgraph
+      // this is a node not belonging to the subgraph
+      if (simple_nodes[nid]->label != label) {
+        // TODO(zhengda) I need to test this.
         for (int idx : it->second) {
           output_entries->push_back(&simple_nodes[nid]->node->inputs[idx]);
         }
-      } else {
-        CHECK_EQ(simple_nodes[nid]->label, label);
       }
     }
   }
@@ -287,6 +302,9 @@ Graph PartitionGraph(Graph&& g) {
     CreateSimpleGraph(g, &simple_nodes);
     std::vector<std::vector<SimpleNode*>> subgraph_nodes;
     FindSubgraphs(g, op_names, simple_nodes, &subgraph_nodes);
+    // If the graph only has one subgraph, we don't need to do anything.
+    if (subgraph_nodes.size() == 1)
+      return g;
     std::vector<nnvm::NodeEntry*> entries;
     // TODO(junwu): take care of the situation when the op is the last op
     for (size_t i = 0; i < subgraph_nodes.size(); ++i) {
@@ -295,11 +313,17 @@ Graph PartitionGraph(Graph&& g) {
       LOG(INFO) << "Searching for input entries...";
       entries.clear();
       FindInputEntries(g, simple_nodes, subgraph_nodes[i], &entries);
+      std::vector<nnvm::NodeEntry> orig_input_entries;
+      CutGraphInputs(entries, false, &orig_input_entries);
       PrintNodeEntries(entries);
 
       LOG(INFO) << "Searching for output entries...";
       entries.clear();
       FindOutputEntries(&g, simple_nodes, subgraph_nodes[i], &entries);
+      auto op = Op::Get("_subgraph_op");
+      nnvm::NodePtr n = CutCreateSubgraphNode(entries, op, "_subgraph_op");
+      // TODO(zhengda) this may not be the right order for input entries of a subgraph?
+      n->inputs = orig_input_entries;
       PrintNodeEntries(entries);
     }
     return g;
