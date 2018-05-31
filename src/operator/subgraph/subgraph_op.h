@@ -60,8 +60,7 @@ class SubgraphSelector {
    * Given a set of nodes that have been selected so far for a subgraph, determine
    * if the input node should be selected for a subgraph.
    */
-  virtual bool Select(const nnvm::Node &n,
-                      const std::vector<sg::SimpleNode*> *subgraph_nodes) = 0;
+  virtual bool Select(const nnvm::Node &n) = 0;
   virtual bool UseIncomingEdges() const = 0;
   virtual bool UseOutgoingEdges() const = 0;
 };
@@ -139,8 +138,7 @@ class ContainOpSelect: public SubgraphSelector {
     return true;
   }
 
-  virtual bool Select(const nnvm::Node &n,
-                      const std::vector<sg::SimpleNode*> *subgraph_nodes) {
+  virtual bool Select(const nnvm::Node &n) {
     return !n.is_variable() && op_names->count(n.op()->name);
   }
 };

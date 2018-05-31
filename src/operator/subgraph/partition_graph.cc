@@ -122,7 +122,7 @@ void LabelSubgraph(const Graph&g,
     // get qualified adjacent input nodes
     if (select_func->UseIncomingEdges()) {
       for (auto& e : cur_node->node->inputs) {
-        if (select_func->Select(*e.node, subgraph_nodes)) {
+        if (select_func->Select(*e.node)) {
           const auto nid = indexed_graph.node_id(e.node.get());
           CHECK_LT(nid, simple_nodes.size());
           // this node has not been visited yet
@@ -134,7 +134,7 @@ void LabelSubgraph(const Graph&g,
     // get qualified output nodes
     if (select_func->UseOutgoingEdges()) {
       for (auto it = cur_node->outputs.begin(); it != cur_node->outputs.end(); ++it) {
-        if (select_func->Select(*it->first, subgraph_nodes)) {
+        if (select_func->Select(*it->first)) {
           const auto nid = indexed_graph.node_id(it->first);
           CHECK_LT(nid, simple_nodes.size());
           // this node has not been visited yet
@@ -162,7 +162,7 @@ void FindSubgraphs(const Graph& g,
   for (size_t i = 0; i < simple_nodes.size(); ++i) {
     nnvm::Node* node = simple_nodes[i]->node;
     auto select_func = subg_prop.CreateSubgraphSelector();
-    if (select_func->Select(*node, nullptr) && simple_nodes[i]->label == -1) {
+    if (select_func->Select(*node) && simple_nodes[i]->label == -1) {
       subgraph_nodes->emplace_back();
       LabelSubgraph(g, select_func, subgraph_nodes->size() - 1, i, simple_nodes,
                     &subgraph_nodes->back());
