@@ -96,6 +96,8 @@ private:
   nnvm::Symbol subgraph_sym_;
 };
 
+using SubgraphOperatorPtr = std::shared_ptr<SubgraphOperator>;
+
 /*
  * This provides a set of properties for partitioning a graph into subgraphs,
  * reconstructing a new graph from the subgraphs and creating a subgraph
@@ -109,7 +111,7 @@ class SubgraphProperty {
   // execute the operators in the subgraph.
   virtual nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &s) const = 0;
   // Create a subgraph operator for execution.
-  virtual OpStatePtr CreateSubgraphOperator(const nnvm::Symbol &sym) const = 0;
+  virtual SubgraphOperatorPtr CreateSubgraphOperator(const nnvm::Symbol &sym) const = 0;
   // The type of the subgraph.
   virtual std::string GetType() const = 0;
 };
@@ -164,7 +166,7 @@ class SimpleSubgraphProperty: public SubgraphProperty {
     return std::make_shared<ContainOpSelector>(op_names);
   }
 
-  virtual OpStatePtr CreateSubgraphOperator(const nnvm::Symbol &sym) const;
+  virtual SubgraphOperatorPtr CreateSubgraphOperator(const nnvm::Symbol &sym) const;
   virtual std::string GetType() const {
     return "default";
   }
