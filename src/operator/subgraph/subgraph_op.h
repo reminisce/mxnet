@@ -70,14 +70,18 @@ class SubgraphSelect {
 
 using SubgraphSelectPtr = std::shared_ptr<SubgraphSelect>;
 
-class SubgraphOpState {
+/*
+ * This is the interface of the subgraph operator that executes the computation
+ * in the subgraph.
+ */
+class SubgraphOperator {
   nnvm::Symbol subgraph_sym_;
 public:
-  SubgraphOpState(const nnvm::Symbol &sym) {
+  SubgraphOperator(const nnvm::Symbol &sym) {
     this->subgraph_sym_ = sym;
   }
 
-  virtual ~SubgraphOpState() {
+  virtual ~SubgraphOperator() {
   }
 
   const nnvm::Symbol &GetSubgraph() const {
@@ -95,19 +99,21 @@ public:
 };
 
 /*
- * This provides a set of properties for partitioning a graph into subgraphs
- * and reconstructing a new graph from the subgraphs.
- * Currently, it has two properties:
- * * the criteria of selecting the subgraph nodes,
- * * create an nnvm node for a given subgraph. Here users can customize how to
- *   execute the operators in the subgraph.
+ * This provides a set of properties for partitioning a graph into subgraphs,
+ * reconstructing a new graph from the subgraphs and creating a subgraph
+ * operator to execute the subgraph.
  */
 class SubgraphProperty {
  public:
-  virtual nnvm::NodePtr GetSubgraphNode(const nnvm::Symbol &s) const = 0;
+  // the criteria of selecting the subgraph nodes.
   virtual SubgraphSelectPtr CreateSubgraphSelect() const = 0;
-  virtual OpStatePtr CreateSubgraphOpState(const nnvm::Symbol &sym) const = 0;
-  virtual std::string GetName() const = 0;
+  // create an nnvm node for a given subgraph. Here users can customize how to
+  // execute the operators in the subgraph.
+  virtual nnvm::NodePtr GetSubgraphNode(const nnvm::Symbol &s) const = 0;
+  // Create a subgraph operator for execution.
+  virtual OpStatePtr CreateSubgraphOperator(const nnvm::Symbol &sym) const = 0;
+  // The type of the subgraph.
+  virtual std::string GetType() const = 0;
 };
 
 using SubgraphPropertyPtr = std::shared_ptr<SubgraphProperty>;
@@ -155,7 +161,7 @@ class SimpleSubgraphProperty: public SubgraphProperty {
     nnvm::NodePtr n = nnvm::Node::Create();
     n->attrs.op = Op::Get("_subgraph_op");
     n->attrs.name = "_subgraph_op";
-    n->attrs.dict.insert(std::pair<std::string, std::string>("exec_type", GetName()));
+    n->attrs.dict.insert(std::pair<std::string, std::string>("exec_type", GetType()));
     n->attrs.parsed = std::move(sym);
     return n;
   }
@@ -163,8 +169,8 @@ class SimpleSubgraphProperty: public SubgraphProperty {
     return std::make_shared<ContainOpSelect>(op_names);
   }
 
-  virtual OpStatePtr CreateSubgraphOpState(const nnvm::Symbol &sym) const;
-  virtual std::string GetName() const {
+  virtual OpStatePtr CreateSubgraphOperator(const nnvm::Symbol &sym) const;
+  virtual std::string GetType() const {
     return "default";
   }
 };

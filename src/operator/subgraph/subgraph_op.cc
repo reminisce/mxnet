@@ -35,14 +35,14 @@ namespace op {
 static std::unordered_map<std::string, SubgraphPropertyPtr> properties;
 
 void RegisterSubgraphProperty(SubgraphPropertyPtr property) {
-  properties.insert(std::pair<std::string, SubgraphPropertyPtr>(property->GetName(),
+  properties.insert(std::pair<std::string, SubgraphPropertyPtr>(property->GetType(),
                                                                 property));
 }
 
-class DefaultSubgraphOpState: public SubgraphOpState {
+class DefaultSubgraphOperator: public SubgraphOperator {
  public:
   // TODO: initialize uuid
-  DefaultSubgraphOpState(const Symbol& sym) : SubgraphOpState(sym),
+  DefaultSubgraphOperator(const Symbol& sym) : SubgraphOperator(sym),
       subgraph_uuid_("dfasdfadsmxdfw324"),
       immutable_data_names_(sym.ListInputNames(Symbol::kReadOnlyArgs)),
       mutable_data_names_(sym.ListInputNames(Symbol::kAuxiliaryStates)),
@@ -90,13 +90,13 @@ class DefaultSubgraphOpState: public SubgraphOpState {
   //std::vector<std::string> input_data_names_;
   std::vector<std::string> output_data_names_;
   std::shared_ptr<Executor> subgraph_executor_;
-};  // SubgraphOpState
+};
 
-OpStatePtr SimpleSubgraphProperty::CreateSubgraphOpState(const nnvm::Symbol &sym) const {
-  return OpStatePtr::Create<DefaultSubgraphOpState>(sym);
+OpStatePtr SimpleSubgraphProperty::CreateSubgraphOperator(const nnvm::Symbol &sym) const {
+  return OpStatePtr::Create<DefaultSubgraphOperator>(sym);
 }
 
-void DefaultSubgraphOpState::Forward(const OpContext& ctx,
+void DefaultSubgraphOperator::Forward(const OpContext& ctx,
                                      const std::vector<NDArray>& inputs,
                                      const std::vector<OpReqType>& req,
                                      const std::vector<NDArray>& outputs) {
@@ -156,7 +156,7 @@ OpStatePtr CreateSubgraphOpState(const NodeAttrs& attrs,
   std::string exec_name = it->second;
   auto it1 = properties.find(exec_name);
   CHECK(it1 != properties.end()) << "We don't support the execution type: " << exec_name;
-  return it1->second->CreateSubgraphOpState(subgraph_sym);
+  return it1->second->CreateSubgraphOperator(subgraph_sym);
 }
 
 bool SubgraphOpShape(const nnvm::NodeAttrs& attrs,
@@ -251,8 +251,8 @@ void SubgraphOpForward(const OpStatePtr& state_ptr,
                        const std::vector<NDArray>& inputs,
                        const std::vector<OpReqType>& req,
                        const std::vector<NDArray>& outputs) {
-  SubgraphOpState& state = state_ptr.get_state<SubgraphOpState>();
-  state.Forward(ctx, inputs, req, outputs);
+  SubgraphOperator& op = state_ptr.get_state<SubgraphOperator>();
+  op.Forward(ctx, inputs, req, outputs);
 }
 
 NNVM_REGISTER_OP(_subgraph_op)
