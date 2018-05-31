@@ -70,13 +70,37 @@ class SubgraphSelect {
 
 using SubgraphSelectPtr = std::shared_ptr<SubgraphSelect>;
 
+class SubgraphOpState {
+  nnvm::Symbol subgraph_sym_;
+public:
+  SubgraphOpState(const nnvm::Symbol &sym) {
+    this->subgraph_sym_ = sym;
+  }
+
+  virtual ~SubgraphOpState() {
+  }
+
+  const nnvm::Symbol &GetSubgraph() const {
+    return subgraph_sym_;
+  }
+
+  virtual void Forward(const OpContext& ctx,
+                       const std::vector<NDArray>& inputs,
+                       const std::vector<OpReqType>& req,
+                       const std::vector<NDArray>& outputs) = 0;
+  virtual void Backward(const OpContext& ctx,
+                        const std::vector<NDArray>& inputs,
+                        const std::vector<OpReqType>& req,
+                        const std::vector<NDArray>& outputs) = 0;
+};
+
 /*
  * This provides a set of properties for partitioning a graph into subgraphs
  * and reconstructing a new graph from the subgraphs.
  * Currently, it has two properties:
  * * the criteria of selecting the subgraph nodes,
  * * create an nnvm node for a given subgraph. Here users can customize how to
- * execute the operators in the subgraph.
+ *   execute the operators in the subgraph.
  */
 class SubgraphProperty {
  public:
@@ -127,6 +151,7 @@ class SimpleSubgraphProperty: public SubgraphProperty {
     nnvm::NodePtr n = nnvm::Node::Create();
     n->attrs.op = Op::Get("_subgraph_op");
     n->attrs.name = "_subgraph_op";
+    n->attrs.dict.insert(std::pair<std::string, std::string>("exec_type", "default"));
     n->attrs.parsed = std::move(sym);
     return n;
   }
