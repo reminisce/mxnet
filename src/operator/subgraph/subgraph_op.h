@@ -122,11 +122,11 @@ void RegisterSubgraphProperty(SubgraphPropertyPtr property);
  * This selects nodes for a subgraph that only contains operators
  * in a given set and it visits nodes via both input and output links.
  */
-class ContainOpSelect: public SubgraphSelector {
+class ContainOpSelector: public SubgraphSelector {
   std::shared_ptr<const std::unordered_set<std::string>> op_names;
 
  public:
-  ContainOpSelect(std::shared_ptr<const std::unordered_set<std::string>> op_names) {
+  ContainOpSelector(std::shared_ptr<const std::unordered_set<std::string>> op_names) {
     this->op_names = op_names;
   }
 
@@ -161,7 +161,7 @@ class SimpleSubgraphProperty: public SubgraphProperty {
     return n;
   }
   virtual SubgraphSelectorPtr CreateSubgraphSelector() const {
-    return std::make_shared<ContainOpSelect>(op_names);
+    return std::make_shared<ContainOpSelector>(op_names);
   }
 
   virtual OpStatePtr CreateSubgraphOperator(const nnvm::Symbol &sym) const;
