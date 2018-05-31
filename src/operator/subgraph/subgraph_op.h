@@ -106,9 +106,13 @@ class SubgraphProperty {
  public:
   virtual nnvm::NodePtr GetSubgraphNode(const nnvm::Symbol &s) const = 0;
   virtual SubgraphSelectPtr CreateSubgraphSelect() const = 0;
+  virtual OpStatePtr CreateSubgraphOpState(const nnvm::Symbol &sym) const = 0;
+  virtual std::string GetName() const = 0;
 };
 
 using SubgraphPropertyPtr = std::shared_ptr<SubgraphProperty>;
+
+void RegisterSubgraphProperty(SubgraphPropertyPtr property);
 
 /*
  * This selects nodes for a subgraph that only contains operators
@@ -151,12 +155,17 @@ class SimpleSubgraphProperty: public SubgraphProperty {
     nnvm::NodePtr n = nnvm::Node::Create();
     n->attrs.op = Op::Get("_subgraph_op");
     n->attrs.name = "_subgraph_op";
-    n->attrs.dict.insert(std::pair<std::string, std::string>("exec_type", "default"));
+    n->attrs.dict.insert(std::pair<std::string, std::string>("exec_type", GetName()));
     n->attrs.parsed = std::move(sym);
     return n;
   }
   virtual SubgraphSelectPtr CreateSubgraphSelect() const {
     return std::make_shared<ContainOpSelect>(op_names);
+  }
+
+  virtual OpStatePtr CreateSubgraphOpState(const nnvm::Symbol &sym) const;
+  virtual std::string GetName() const {
+    return "default";
   }
 };
 

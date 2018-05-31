@@ -32,6 +32,13 @@
 namespace mxnet {
 namespace op {
 
+static std::unordered_map<std::string, SubgraphPropertyPtr> properties;
+
+void RegisterSubgraphProperty(SubgraphPropertyPtr property) {
+  properties.insert(std::pair<std::string, SubgraphPropertyPtr>(property->GetName(),
+                                                                property));
+}
+
 class DefaultSubgraphOpState: public SubgraphOpState {
  public:
   // TODO: initialize uuid
@@ -84,6 +91,10 @@ class DefaultSubgraphOpState: public SubgraphOpState {
   std::vector<std::string> output_data_names_;
   std::shared_ptr<Executor> subgraph_executor_;
 };  // SubgraphOpState
+
+OpStatePtr SimpleSubgraphProperty::CreateSubgraphOpState(const nnvm::Symbol &sym) const {
+  return OpStatePtr::Create<DefaultSubgraphOpState>(sym);
+}
 
 void DefaultSubgraphOpState::Forward(const OpContext& ctx,
                                      const std::vector<NDArray>& inputs,
@@ -142,10 +153,10 @@ OpStatePtr CreateSubgraphOpState(const NodeAttrs& attrs,
   const Symbol& subgraph_sym = nnvm::get<Symbol>(attrs.parsed);
   auto it = attrs.dict.find("exec_type");
   CHECK(it != attrs.dict.end());
-  if (it->second == "default")
-    return OpStatePtr::Create<DefaultSubgraphOpState>(subgraph_sym);
-  else
-    LOG(FATAL) << "We don't support the execution type: " << it->second;
+  std::string exec_name = it->second;
+  auto it1 = properties.find(exec_name);
+  CHECK(it1 != properties.end()) << "We don't support the execution type: " << exec_name;
+  return it1->second->CreateSubgraphOpState(subgraph_sym);
 }
 
 bool SubgraphOpShape(const nnvm::NodeAttrs& attrs,
