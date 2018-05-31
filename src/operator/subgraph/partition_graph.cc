@@ -106,7 +106,7 @@ void PrintSubgraph(const std::vector<SimpleNode*>& simple_nodes) {
  * can be accessed from the starting node.
  */
 void LabelSubgraph(const Graph&g,
-                   SubgraphSelectPtr selectFunc,
+                   SubgraphSelectorPtr select_func,
                    const int label,
                    const size_t snid,  // simple node id
                    const std::vector<SimpleNodePtr>& simple_nodes,
@@ -120,31 +120,26 @@ void LabelSubgraph(const Graph&g,
     cur_node->label = label;
     subgraph_nodes->push_back(cur_node);
     // get qualified adjacent input nodes
-    if (selectFunc->UseIncomingLink()) {
+    if (select_func->UseIncomingEdges()) {
       for (auto& e : cur_node->node->inputs) {
-        if (selectFunc->Select(*e.node, subgraph_nodes)) {
+        if (select_func->Select(*e.node, subgraph_nodes)) {
           const auto nid = indexed_graph.node_id(e.node.get());
           CHECK_LT(nid, simple_nodes.size());
           // this node has not been visited yet
-          if (simple_nodes[nid]->label == -1) {
+          if (simple_nodes[nid]->label == -1)
             node_queue.push(simple_nodes[nid].get());
-          } else {
-            CHECK_EQ(simple_nodes[nid]->label, label);
-          }
         }
       }
     }
     // get qualified output nodes
-    if (selectFunc->UseOutgoingLink()) {
+    if (select_func->UseOutgoingEdges()) {
       for (auto it = cur_node->outputs.begin(); it != cur_node->outputs.end(); ++it) {
-        if (selectFunc->Select(*it->first, subgraph_nodes)) {
+        if (select_func->Select(*it->first, subgraph_nodes)) {
           const auto nid = indexed_graph.node_id(it->first);
           CHECK_LT(nid, simple_nodes.size());
-          if (simple_nodes[nid]->label == -1) {  // this node has not been visited yet
+          // this node has not been visited yet
+          if (simple_nodes[nid]->label == -1)
             node_queue.push(simple_nodes[nid].get());
-          } else {
-            CHECK_EQ(simple_nodes[nid]->label, label);
-          }
         }
       }
     }
@@ -158,7 +153,7 @@ void LabelSubgraph(const Graph&g,
  * doesn't meet the given criteria, it will be marked with a separate label.
  */
 void FindSubgraphs(const Graph& g,
-                   const SubgraphProperty &subgProperty,
+                   const SubgraphProperty &subg_prop,
                    const std::vector<SimpleNodePtr>& simple_nodes,
                    std::vector<std::vector<SimpleNode*>>* subgraph_nodes) {
   //CHECK(simple_nodes != nullptr);
@@ -166,10 +161,10 @@ void FindSubgraphs(const Graph& g,
   CHECK_EQ(indexed_graph.num_nodes(), simple_nodes.size());
   for (size_t i = 0; i < simple_nodes.size(); ++i) {
     nnvm::Node* node = simple_nodes[i]->node;
-    auto selectFunc = subgProperty.CreateSubgraphSelect();
-    if (selectFunc->Select(*node, nullptr) && simple_nodes[i]->label == -1) {
+    auto select_func = subg_prop.CreateSubgraphSelector();
+    if (select_func->Select(*node, nullptr) && simple_nodes[i]->label == -1) {
       subgraph_nodes->emplace_back();
-      LabelSubgraph(g, selectFunc, subgraph_nodes->size() - 1, i, simple_nodes,
+      LabelSubgraph(g, select_func, subgraph_nodes->size() - 1, i, simple_nodes,
                     &subgraph_nodes->back());
     }
   }
@@ -309,11 +304,11 @@ Graph PartitionGraph(Graph&& g) {
     return ret;
   } else {
     using namespace sg;
-    const SubgraphProperty &subgProperty = g.GetAttr<SubgraphProperty>("subgraph_property");
+    const SubgraphProperty &subg_prop = g.GetAttr<SubgraphProperty>("subgraph_property");
     std::vector<SimpleNodePtr> simple_nodes;
     CreateSimpleGraph(g, &simple_nodes);
     std::vector<std::vector<SimpleNode*>> subgraph_nodes;
-    FindSubgraphs(g, subgProperty, simple_nodes, &subgraph_nodes);
+    FindSubgraphs(g, subg_prop, simple_nodes, &subgraph_nodes);
     std::vector<nnvm::NodeEntry*> entries;
     // TODO(junwu): take care of the situation when the op is the last op
     for (size_t i = 0; i < subgraph_nodes.size(); ++i) {
@@ -336,7 +331,7 @@ Graph PartitionGraph(Graph&& g) {
       sym.outputs.resize(entries.size());
       for (size_t i = 0; i < entries.size(); i++)
         sym.outputs[i] = *entries[i];
-      nnvm::NodePtr n = subgProperty.GetSubgraphNode(sym);
+      nnvm::NodePtr n = subg_prop.CreateSubgraphNode(sym);
 
       // Connect the external nodes to the subgraph node.
       for (uint32_t i = 0; i < entries.size(); i++)

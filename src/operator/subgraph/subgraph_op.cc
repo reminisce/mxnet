@@ -32,11 +32,13 @@
 namespace mxnet {
 namespace op {
 
-static std::unordered_map<std::string, SubgraphPropertyPtr> properties;
+static std::unordered_map<std::string, SubgraphPropertyPtr> subg_props;
 
 void RegisterSubgraphProperty(SubgraphPropertyPtr property) {
-  properties.insert(std::pair<std::string, SubgraphPropertyPtr>(property->GetType(),
-                                                                property));
+  auto ret = subg_props.insert(std::pair<std::string, SubgraphPropertyPtr>(
+          property->GetType(), property));
+  CHECK(!ret.second) << "The subgraph property for " << property->GetType()
+      << " has been registered";
 }
 
 class DefaultSubgraphOperator: public SubgraphOperator {
@@ -97,9 +99,9 @@ OpStatePtr SimpleSubgraphProperty::CreateSubgraphOperator(const nnvm::Symbol &sy
 }
 
 void DefaultSubgraphOperator::Forward(const OpContext& ctx,
-                                     const std::vector<NDArray>& inputs,
-                                     const std::vector<OpReqType>& req,
-                                     const std::vector<NDArray>& outputs) {
+                                      const std::vector<NDArray>& inputs,
+                                      const std::vector<OpReqType>& req,
+                                      const std::vector<NDArray>& outputs) {
   // We can create an executor to run this subgraph op
   if (this->subgraph_executor_.get() == nullptr) {
     std::vector<NDArray> arg_arrays;
@@ -154,9 +156,10 @@ OpStatePtr CreateSubgraphOpState(const NodeAttrs& attrs,
   auto it = attrs.dict.find("exec_type");
   CHECK(it != attrs.dict.end());
   std::string exec_name = it->second;
-  auto it1 = properties.find(exec_name);
-  CHECK(it1 != properties.end()) << "We don't support the execution type: " << exec_name;
-  return it1->second->CreateSubgraphOperator(subgraph_sym);
+  auto prop_iter = subg_props.find(exec_name);
+  CHECK(prop_iter != subg_props.end()) << "We don't support the execution type: "
+      << exec_name;
+  return prop_iter->second->CreateSubgraphOperator(subgraph_sym);
 }
 
 bool SubgraphOpShape(const nnvm::NodeAttrs& attrs,

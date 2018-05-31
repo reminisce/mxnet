@@ -52,9 +52,9 @@ struct SimpleNode {
  * We can also specify what links we should use when traversing the neighbor
  * nodes.
  */
-class SubgraphSelect {
+class SubgraphSelector {
  public:
-  virtual ~SubgraphSelect() {
+  virtual ~SubgraphSelector() {
   }
   /*
    * Given a set of nodes that have been selected so far for a subgraph, determine
@@ -62,20 +62,17 @@ class SubgraphSelect {
    */
   virtual bool Select(const nnvm::Node &n,
                       const std::vector<sg::SimpleNode*> *subgraph_nodes) = 0;
-  virtual bool UseIncomingLink() const = 0;
-  virtual bool UseOutgoingLink() const = 0;
-  virtual void Reset() {
-  }
+  virtual bool UseIncomingEdges() const = 0;
+  virtual bool UseOutgoingEdges() const = 0;
 };
 
-using SubgraphSelectPtr = std::shared_ptr<SubgraphSelect>;
+using SubgraphSelectorPtr = std::shared_ptr<SubgraphSelector>;
 
 /*
  * This is the interface of the subgraph operator that executes the computation
  * in the subgraph.
  */
 class SubgraphOperator {
-  nnvm::Symbol subgraph_sym_;
 public:
   SubgraphOperator(const nnvm::Symbol &sym) {
     this->subgraph_sym_ = sym;
@@ -96,6 +93,8 @@ public:
                         const std::vector<NDArray>& inputs,
                         const std::vector<OpReqType>& req,
                         const std::vector<NDArray>& outputs) = 0;
+private:
+  nnvm::Symbol subgraph_sym_;
 };
 
 /*
@@ -106,10 +105,10 @@ public:
 class SubgraphProperty {
  public:
   // the criteria of selecting the subgraph nodes.
-  virtual SubgraphSelectPtr CreateSubgraphSelect() const = 0;
+  virtual SubgraphSelectorPtr CreateSubgraphSelector() const = 0;
   // create an nnvm node for a given subgraph. Here users can customize how to
   // execute the operators in the subgraph.
-  virtual nnvm::NodePtr GetSubgraphNode(const nnvm::Symbol &s) const = 0;
+  virtual nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &s) const = 0;
   // Create a subgraph operator for execution.
   virtual OpStatePtr CreateSubgraphOperator(const nnvm::Symbol &sym) const = 0;
   // The type of the subgraph.
@@ -124,7 +123,7 @@ void RegisterSubgraphProperty(SubgraphPropertyPtr property);
  * This selects nodes for a subgraph that only contains operators
  * in a given set and it visits nodes via both input and output links.
  */
-class ContainOpSelect: public SubgraphSelect {
+class ContainOpSelect: public SubgraphSelector {
   std::shared_ptr<const std::unordered_set<std::string>> op_names;
 
  public:
@@ -132,11 +131,11 @@ class ContainOpSelect: public SubgraphSelect {
     this->op_names = op_names;
   }
 
-  virtual bool UseIncomingLink() const {
+  virtual bool UseIncomingEdges() const {
     return true;
   }
 
-  virtual bool UseOutgoingLink() const {
+  virtual bool UseOutgoingEdges() const {
     return true;
   }
 
@@ -151,21 +150,19 @@ class ContainOpSelect: public SubgraphSelect {
  * within a set. The operators in the subgraph will be executed by _subgraph_op.
  */
 class SimpleSubgraphProperty: public SubgraphProperty {
-  std::shared_ptr<const std::unordered_set<std::string>> op_names;
-
  public:
   SimpleSubgraphProperty(const std::unordered_set<std::string> &op_names) {
     this->op_names = std::make_shared<std::unordered_set<std::string>>(op_names);
   }
-  virtual nnvm::NodePtr GetSubgraphNode(const nnvm::Symbol &sym) const {
+  virtual nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &sym) const {
     nnvm::NodePtr n = nnvm::Node::Create();
     n->attrs.op = Op::Get("_subgraph_op");
     n->attrs.name = "_subgraph_op";
     n->attrs.dict.insert(std::pair<std::string, std::string>("exec_type", GetType()));
-    n->attrs.parsed = std::move(sym);
+    n->attrs.parsed = sym;
     return n;
   }
-  virtual SubgraphSelectPtr CreateSubgraphSelect() const {
+  virtual SubgraphSelectorPtr CreateSubgraphSelector() const {
     return std::make_shared<ContainOpSelect>(op_names);
   }
 
@@ -173,6 +170,9 @@ class SimpleSubgraphProperty: public SubgraphProperty {
   virtual std::string GetType() const {
     return "default";
   }
+
+ private:
+  std::shared_ptr<const std::unordered_set<std::string>> op_names;
 };
 
 }
