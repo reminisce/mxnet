@@ -56,13 +56,12 @@ class SubgraphSelector {
  public:
   virtual ~SubgraphSelector() {
   }
-  /*
-   * Given a set of nodes that have been selected so far for a subgraph, determine
-   * if the input node should be selected for a subgraph.
-   */
+  // Determine if the node should be selected for a subgraph.
   virtual bool Select(const nnvm::Node &n) = 0;
-  virtual bool UseIncomingEdges() const = 0;
-  virtual bool UseOutgoingEdges() const = 0;
+  // Determine if the input node should be selected for a subgraph.
+  virtual bool SelectInput(const nnvm::Node &n, const nnvm::Node &new_node) = 0;
+  // Determine if the output node should be selected for a subgraph.
+  virtual bool SelectOutput(const nnvm::Node &n, const nnvm::Node &new_node) = 0;
 };
 
 using SubgraphSelectorPtr = std::shared_ptr<SubgraphSelector>;
@@ -97,16 +96,16 @@ class ContainOpSelector: public SubgraphSelector {
     this->op_names = op_names;
   }
 
-  virtual bool UseIncomingEdges() const {
-    return true;
-  }
-
-  virtual bool UseOutgoingEdges() const {
-    return true;
-  }
-
   virtual bool Select(const nnvm::Node &n) {
     return !n.is_variable() && op_names->count(n.op()->name);
+  }
+
+  virtual bool SelectInput(const nnvm::Node &n, const nnvm::Node &new_node) {
+    return !new_node.is_variable() && op_names->count(new_node.op()->name);
+  }
+
+  virtual bool SelectOutput(const nnvm::Node &n, const nnvm::Node &new_node) {
+    return !new_node.is_variable() && op_names->count(new_node.op()->name);
   }
 };
 
