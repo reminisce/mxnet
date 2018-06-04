@@ -77,7 +77,8 @@ class SubgraphProperty {
   virtual SubgraphSelectorPtr CreateSubgraphSelector() const = 0;
   // create an nnvm node for a given subgraph. Here users can customize how to
   // execute the operators in the subgraph.
-  virtual nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &s, const int subgraph_id = 0) const = 0;
+  virtual nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &s,
+                                           const int subgraph_id = 0) const = 0;
 };
 
 using SubgraphPropertyPtr = std::shared_ptr<SubgraphProperty>;
@@ -130,6 +131,50 @@ class SimpleSubgraphProperty: public SubgraphProperty {
 
  private:
   std::shared_ptr<const std::unordered_set<std::string>> op_names_;
+};
+
+class SubgraphAttrSelector: public SubgraphSelector {
+  const std::string subgraph_name;
+ public:
+  SubgraphAttrSelector(const std::string &name): subgraph_name(name) {
+  }
+
+  virtual bool Select(const nnvm::Node &n) {
+    auto it = n.attrs.dict.find("__subgraph_name__");
+    if (it == n.attrs.dict.end())
+      return false;
+    else
+      return it->second == subgraph_name;
+  }
+
+  virtual bool SelectInput(const nnvm::Node &n, const nnvm::Node &new_node) {
+    return Select(new_node);
+  }
+
+  virtual bool SelectOutput(const nnvm::Node &n, const nnvm::Node &new_node) {
+    return Select(new_node);
+  }
+};
+
+class SubgraphAttrProperty: public SubgraphProperty {
+  std::string name;
+ public:
+  SubgraphAttrProperty(const std::string name) {
+    this->name = name;
+  }
+
+  virtual SubgraphSelectorPtr CreateSubgraphSelector() const {
+    return std::make_shared<SubgraphAttrSelector>(name);
+  }
+
+  virtual nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &sym,
+                                           const int subgraph_id = 0) const {
+    nnvm::NodePtr n = nnvm::Node::Create();
+    n->attrs.op = Op::Get("_subgraph_op");
+    n->attrs.name = "_subgraph_op" + std::to_string(subgraph_id);
+    n->attrs.parsed = sym;
+    return n;
+  }
 };
 
 }
