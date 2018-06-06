@@ -156,7 +156,7 @@ bool SubgraphOpShape(const nnvm::NodeAttrs& attrs,
   // TODO: make sure shape inputs matches the order from in_shapes
 
   // Put the input and output shapes to the shape vector.
-  nnvm::ShapeVector shapes(idx_g.num_nodes());
+  nnvm::ShapeVector shapes(idx_g.num_node_entries());
   const auto &input_nids = idx_g.input_nodes();
   CHECK_EQ(input_nids.size(), in_shapes->size());
   for (size_t i = 0; i < in_shapes->size(); i++) {
@@ -201,7 +201,7 @@ bool SubgraphOpType(const nnvm::NodeAttrs& attrs,
   // TODO: make sure type inputs matches the order from in_types
 
   // Put the input and output data types to the dtype vector.
-  nnvm::DTypeVector types(idx_g.num_nodes());
+  nnvm::DTypeVector types(idx_g.num_node_entries(), -1);
   const auto &input_nids = idx_g.input_nodes();
   CHECK_EQ(input_nids.size(), in_types->size());
   for (size_t i = 0; i < in_types->size(); i++) {
@@ -244,11 +244,11 @@ bool SubgraphOpStorageType(const nnvm::NodeAttrs& attrs,
   const auto& idx_g = g.indexed_graph();
   CHECK_EQ(idx_g.input_nodes().size(), in_stypes->size());
   CHECK_EQ(idx_g.outputs().size(), out_stypes->size());
-  exec::DevMaskVector dev_masks(idx_g.num_nodes(), dev_mask);
+  exec::DevMaskVector dev_masks(idx_g.num_node_entries(), dev_mask);
   // TODO: make sure type inputs matches the order from in_types
 
   // Put the input and output storages to the storage vector.
-  nnvm::StorageVector stypes(idx_g.num_nodes());
+  nnvm::StorageVector stypes(idx_g.num_node_entries(), exec::kBadStorageID);
   const auto &input_nids = idx_g.input_nodes();
   CHECK_EQ(input_nids.size(), in_stypes->size());
   for (size_t i = 0; i < in_stypes->size(); i++) {
