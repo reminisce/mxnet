@@ -127,7 +127,7 @@ class StatefulComputeExecutor : public StorageFallbackOpExecutor {
   }
 
   bool HasSubgraph() const override {
-    return !attrs_.subgraphs.empty();
+    return has_subgraph_;
   }
 
   ExecType exec_type() const override {
@@ -146,11 +146,14 @@ class StatefulComputeExecutor : public StorageFallbackOpExecutor {
                                    const FStatefulCompute& fcompute,
                                    ExecType exec_type,
                                    const std::vector<uint32_t> &mutate_idx)
-      : StorageFallbackOpExecutor(mutate_idx), attrs_(attrs),
-        state_(state), fcompute_(fcompute), exec_type_(exec_type) {}
+      : StorageFallbackOpExecutor(mutate_idx),
+        state_(state), fcompute_(fcompute), exec_type_(exec_type) {
+    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
+    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
+  }
 
  private:
-  NodeAttrs attrs_;
+  bool has_subgraph_;
   OpStatePtr state_;
   FStatefulCompute fcompute_;
   ExecType exec_type_;
@@ -169,7 +172,7 @@ class StatefulComputeExExecutor : public OpExecutor {
   }
 
   bool HasSubgraph() const override {
-    return !attrs_.subgraphs.empty();
+    return has_subgraph_;
   }
 
   void Setup() override {}
@@ -189,10 +192,13 @@ class StatefulComputeExExecutor : public OpExecutor {
   explicit StatefulComputeExExecutor(const NodeAttrs& attrs, const OpStatePtr& state,
                                      const FStatefulComputeEx& fcompute,
                                      ExecType exec_type)
-      : attrs_(attrs), state_(state), fcompute_(fcompute), exec_type_(exec_type) {}
+      : state_(state), fcompute_(fcompute), exec_type_(exec_type) {
+    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
+    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
+  }
 
  private:
-  NodeAttrs attrs_;
+  bool has_subgraph_;
   OpStatePtr state_;
   FStatefulComputeEx fcompute_;
   ExecType exec_type_;
@@ -218,16 +224,19 @@ class FComputeExecutor : public StorageFallbackOpExecutor {
   }
 
   bool HasSubgraph() const override {
-    return !attrs_.subgraphs.empty();
+    return has_subgraph_;
   }
 
   explicit FComputeExecutor(const NodeAttrs& attrs, FCompute fcompute,
                             ExecType exec_type, const std::vector<uint32_t> &mutate_idx)
       : StorageFallbackOpExecutor(mutate_idx),
         attrs_(attrs), fcompute_(fcompute), exec_type_(exec_type) {
+    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
+    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
   }
 
  private:
+  bool has_subgraph_;
   NodeAttrs attrs_;
   FCompute fcompute_;
   ExecType exec_type_;
@@ -247,7 +256,7 @@ class FComputeExExecutor : public OpExecutor {
   void Setup() override {}
 
   bool HasSubgraph() const override {
-    return !attrs_.subgraphs.empty();
+    return has_subgraph_;
   }
 
   ExecType exec_type() const override {
@@ -257,9 +266,12 @@ class FComputeExExecutor : public OpExecutor {
   explicit FComputeExExecutor(const NodeAttrs& attrs, FComputeEx fcompute,
                               ExecType exec_type)
       : attrs_(attrs), fcompute_(fcompute), exec_type_(exec_type) {
+    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
+    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
   }
 
  private:
+  bool has_subgraph_;
   NodeAttrs attrs_;
   FComputeEx fcompute_;
   ExecType exec_type_;

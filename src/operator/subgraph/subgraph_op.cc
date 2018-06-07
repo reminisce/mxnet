@@ -324,6 +324,7 @@ NNVM_REGISTER_OP(_subgraph_op)
 .set_attr<FInferStorageType>("FInferStorageType", SubgraphOpStorageType)
 .set_attr<FStatefulComputeEx>("FStatefulComputeEx<cpu>", SubgraphOpForward)
 .set_attr<std::string>("key_var_num_args", "num_args")
+.set_attr<bool>("HasSubgraph", true)
 .add_argument("data", "NDArray-or-Symbol[]", "input data list");
 
 }  // namespace op
