@@ -126,10 +126,6 @@ class StatefulComputeExecutor : public StorageFallbackOpExecutor {
     PostFCompute(is_gpu);
   }
 
-  bool HasSubgraph() const override {
-    return has_subgraph_;
-  }
-
   ExecType exec_type() const override {
     return exec_type_;
   }
@@ -142,18 +138,14 @@ class StatefulComputeExecutor : public StorageFallbackOpExecutor {
     return state_;
   }
 
-  explicit StatefulComputeExecutor(const NodeAttrs& attrs, const OpStatePtr& state,
+  explicit StatefulComputeExecutor(const OpStatePtr& state,
                                    const FStatefulCompute& fcompute,
                                    ExecType exec_type,
                                    const std::vector<uint32_t> &mutate_idx)
       : StorageFallbackOpExecutor(mutate_idx),
-        state_(state), fcompute_(fcompute), exec_type_(exec_type) {
-    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
-    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
-  }
+        state_(state), fcompute_(fcompute), exec_type_(exec_type) {}
 
  private:
-  bool has_subgraph_;
   OpStatePtr state_;
   FStatefulCompute fcompute_;
   ExecType exec_type_;
@@ -171,10 +163,6 @@ class StatefulComputeExExecutor : public OpExecutor {
     fcompute_(state_, op_ctx, in_array, req, out_array);
   }
 
-  bool HasSubgraph() const override {
-    return has_subgraph_;
-  }
-
   void Setup() override {}
 
   ExecType exec_type() const override {
@@ -189,16 +177,12 @@ class StatefulComputeExExecutor : public OpExecutor {
     return state_;
   }
 
-  explicit StatefulComputeExExecutor(const NodeAttrs& attrs, const OpStatePtr& state,
+  explicit StatefulComputeExExecutor(const OpStatePtr& state,
                                      const FStatefulComputeEx& fcompute,
                                      ExecType exec_type)
-      : state_(state), fcompute_(fcompute), exec_type_(exec_type) {
-    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
-    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
-  }
+      : state_(state), fcompute_(fcompute), exec_type_(exec_type) {}
 
  private:
-  bool has_subgraph_;
   OpStatePtr state_;
   FStatefulComputeEx fcompute_;
   ExecType exec_type_;
@@ -223,20 +207,13 @@ class FComputeExecutor : public StorageFallbackOpExecutor {
     return exec_type_;
   }
 
-  bool HasSubgraph() const override {
-    return has_subgraph_;
-  }
-
   explicit FComputeExecutor(const NodeAttrs& attrs, FCompute fcompute,
                             ExecType exec_type, const std::vector<uint32_t> &mutate_idx)
       : StorageFallbackOpExecutor(mutate_idx),
         attrs_(attrs), fcompute_(fcompute), exec_type_(exec_type) {
-    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
-    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
   }
 
  private:
-  bool has_subgraph_;
   NodeAttrs attrs_;
   FCompute fcompute_;
   ExecType exec_type_;
@@ -255,10 +232,6 @@ class FComputeExExecutor : public OpExecutor {
 
   void Setup() override {}
 
-  bool HasSubgraph() const override {
-    return has_subgraph_;
-  }
-
   ExecType exec_type() const override {
     return exec_type_;
   }
@@ -266,12 +239,9 @@ class FComputeExExecutor : public OpExecutor {
   explicit FComputeExExecutor(const NodeAttrs& attrs, FComputeEx fcompute,
                               ExecType exec_type)
       : attrs_(attrs), fcompute_(fcompute), exec_type_(exec_type) {
-    auto& has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph");
-    this->has_subgraph_ = has_subgraph.get(attrs.op, false);
   }
 
  private:
-  bool has_subgraph_;
   NodeAttrs attrs_;
   FComputeEx fcompute_;
   ExecType exec_type_;
@@ -323,15 +293,14 @@ void CreateOpExecs(const Graph& g, OpExecVector* p_ret, size_t i) {
         op, "FStatefulComputeEx", vctx[i]);
     // FStatefulComputeEx is dispatched only when dispatch_mode is DispatchMode::kFComputeEx
     if (fcompute_ex != nullptr && dispatch_modes[i] == DispatchMode::kFComputeEx) {
-      ret[i] = std::make_shared<StatefulComputeExExecutor>(inode.source->attrs, state,
-                                                           fcompute_ex, exec_type);
+      ret[i] = std::make_shared<StatefulComputeExExecutor>(state, fcompute_ex, exec_type);
     } else {
       FStatefulCompute fcompute = common::GetFCompute<FStatefulCompute>(
           op, "FStatefulCompute", vctx[i]);
       CHECK(fcompute != nullptr)
           << "One of FStatefulCompute and FStatefulComputeEx must be registered "
           << "for stateful operator " << op->name;
-      ret[i] = std::make_shared<StatefulComputeExecutor>(inode.source->attrs, state, fcompute,
+      ret[i] = std::make_shared<StatefulComputeExecutor>(state, fcompute,
                                                          exec_type, mutate_index);
     }
   } else if (is_layer_backward.get(op, false)) {
@@ -343,7 +312,7 @@ void CreateOpExecs(const Graph& g, OpExecVector* p_ret, size_t i) {
         op, "FStatefulComputeEx", vctx[i]);
     // FStatefulComputeEx is dispatched only when dispatch_mode is DispatchMode::kFComputeEx
     if (fcompute_ex != nullptr && dispatch_modes[i] == DispatchMode::kFComputeEx) {
-      ret[i] = std::make_shared<StatefulComputeExExecutor>(inode.source->attrs,
+      ret[i] = std::make_shared<StatefulComputeExExecutor>(
           ret[fwd_id].get()->state(), fcompute_ex, exec_type);
     } else {
       FStatefulCompute fcompute = common::GetFCompute<FStatefulCompute>(
@@ -351,7 +320,7 @@ void CreateOpExecs(const Graph& g, OpExecVector* p_ret, size_t i) {
       CHECK(fcompute != nullptr)
           << "One of FStatefulCompute and FStatefulComputeEx must be registered "
           << "for stateful operator " << op->name;
-      ret[i] = std::make_shared<StatefulComputeExecutor>(inode.source->attrs,
+      ret[i] = std::make_shared<StatefulComputeExecutor>(
           ret[fwd_id].get()->state(), fcompute, exec_type, mutate_index);
     }
   } else {
