@@ -436,7 +436,8 @@ inline void PushFComputeEx(const FComputeEx& fn,
       }
     };
 
-  if (exec_type == ExecType::kCrossDeviceCopy) {
+  if (exec_type == ExecType::kCrossDeviceCopy
+      || exec_type == ExecType::kSubgraphExec) {
     run(RunContext{ctx, nullptr});
   } else {
     CHECK(exec_type == ExecType::kSync);
@@ -466,7 +467,6 @@ inline void PushOperator(const OpStatePtr& state,
   std::vector<NDArray> inputs, outputs;
   DerefInputOutput(p_inputs, p_outputs, &inputs, &outputs);
 
-  bool has_subgraph = nnvm::Op::GetAttr<bool>("HasSubgraph").get(op, false);
   auto fcompute =
       common::GetFCompute<FStatefulCompute>(op, "FStatefulCompute", ctx);
   auto fcompute_ex =
@@ -487,7 +487,7 @@ inline void PushOperator(const OpStatePtr& state,
 
     // For operators with subgraphs, we need to invoke them in the main thread
     // instead of the threaded engine.
-    if (has_subgraph) {
+    if (exec_type == ExecType::kSubgraphExec) {
       RunContext rctx{ctx, nullptr};
       run(rctx, engine::CallbackOnComplete());
     } else if (exec_type == ExecType::kSync) {
@@ -535,7 +535,7 @@ inline void PushOperator(const OpStatePtr& state,
         }
       };
 
-    if (has_subgraph) {
+    if (exec_type == ExecType::kSubgraphExec) {
       RunContext rctx{ctx, nullptr};
       run(rctx, engine::CallbackOnComplete());
     } else if (exec_type == ExecType::kSync) {
