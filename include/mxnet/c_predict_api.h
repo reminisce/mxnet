@@ -84,7 +84,6 @@ MXNET_DLL int MXPredCreate(const char* symbol_json_str,
                            const mx_uint* input_shape_indptr,
                            const mx_uint* input_shape_data,
                            PredictorHandle* out);
-
 /*!
  * \brief create a predictor wich customized outputs
  * \param symbol_json_str The JSON string of the symbol.
@@ -107,7 +106,6 @@ MXNET_DLL int MXPredCreate(const char* symbol_json_str,
  * \param out The created predictor handle.
  * \return 0 when success, -1 when failure.
  */
-
 MXNET_DLL int MXPredCreatePartialOut(const char* symbol_json_str,
                                      const void* param_bytes,
                                      int param_size,
@@ -120,7 +118,21 @@ MXNET_DLL int MXPredCreatePartialOut(const char* symbol_json_str,
                                      const char** output_keys,
                                      PredictorHandle* out);
 /*!
- * \brief
+ * \brief Creates a predictor with all input data and params.
+ * The order of input_data, input_shape_indptr and input_shape_data
+ * should follow the order of input_keys.
+ * \param symbol_json_str The JSON string of the symbol
+ * \param dev_type The device type, 1: cpu, 2:gpu
+ * \param dev_id The device id of the predictor
+ * \param input_keys The names of input data and params
+ * \param input_data The array of input data and param pointers
+ * \param input_keys The name of input argument.
+ * \param input_shape_indptr Index pointer of shapes of each input node.
+ *    The length of this array = num_input_nodes + 1.
+ * \param input_shape_data A flatted data of shapes of each input node.
+ * \param num_input_nodes Number of input nodes to the net
+ * \param out The created predictor handle.
+ * \return 0 when success, -1 when failure.
  */
 MXNET_DLL int MXPredCreateEx(const char* symbol_json_str,
                              int dev_type, int dev_id,
@@ -131,15 +143,31 @@ MXNET_DLL int MXPredCreateEx(const char* symbol_json_str,
                              const mx_uint num_input_nodes,  // num of all inputs
                              PredictorHandle* out);
 /*!
- * \brief
+ * \brief Creates a predictor with customized outputs.
+ * The order of input_data, input_shape_indptr and input_shape_data
+ * should follow the order of input_keys.
+ * \param symbol_json_str The JSON string of the symbol
+ * \param dev_type The device type, 1: cpu, 2:gpu
+ * \param dev_id The device id of the predictor
+ * \param input_keys The names of input data and params
+ * \param input_data The array of input data and param pointers
+ * \param input_keys The name of input argument.
+ * \param input_shape_indptr Index pointer of shapes of each input node.
+ *    The length of this array = num_input_nodes + 1.
+ * \param input_shape_data A flatted data of shapes of each input node.
+ * \param num_input_nodes Number of input nodes to the net
+ * \param num_output_nodes Number of output nodes to the net,
+ * \param output_keys The name of output argument.
+ * \param out The created predictor handle.
+ * \return 0 when success, -1 when failure.
  */
 MXNET_DLL int MXPredCreatePartialOutEx(const char* symbol_json_str,
                                        int dev_type, int dev_id,
-                                       const char** input_keys,  // all input names
-                                       const mx_float** input_data,  // all input data
+                                       const char** input_keys,
+                                       const mx_float** input_data,
                                        const mx_uint* input_shape_indptr,
                                        const mx_uint* input_shape_data,
-                                       const mx_uint num_input_nodes,  // num of all inputs
+                                       const mx_uint num_input_nodes,
                                        const mx_uint num_output_nodes,
                                        const char** output_keys,
                                        PredictorHandle* out);
