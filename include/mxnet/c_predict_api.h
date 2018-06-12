@@ -120,6 +120,30 @@ MXNET_DLL int MXPredCreatePartialOut(const char* symbol_json_str,
                                      const char** output_keys,
                                      PredictorHandle* out);
 /*!
+ * \brief
+ */
+MXNET_DLL int MXPredCreateEx(const char* symbol_json_str,
+                             int dev_type, int dev_id,
+                             const char** input_keys,  // all input names
+                             const mx_float** input_data,  // all input data
+                             const mx_uint* input_shape_indptr,
+                             const mx_uint* input_shape_data,
+                             const mx_uint num_input_nodes,  // num of all inputs
+                             PredictorHandle* out);
+/*!
+ * \brief
+ */
+MXNET_DLL int MXPredCreatePartialOutEx(const char* symbol_json_str,
+                                       int dev_type, int dev_id,
+                                       const char** input_keys,  // all input names
+                                       const mx_float** input_data,  // all input data
+                                       const mx_uint* input_shape_indptr,
+                                       const mx_uint* input_shape_data,
+                                       const mx_uint num_input_nodes,  // num of all inputs
+                                       const mx_uint num_output_nodes,
+                                       const char** output_keys,
+                                       PredictorHandle* out);
+/*!
  * \brief Change the input shape of an existing predictor.
  * \param num_input_nodes Number of input nodes to the net,
  *    For feedforward net, this is 1.
