@@ -353,8 +353,8 @@ int MXPredCreatePartialOutEx(const char* symbol_json_str,
 
   // bind
   std::map<std::string, Context> ctx_map;
-  std::vector<NDArray> grad_store(arg_arrays.size());
-  std::vector<OpReqType> grad_req(arg_arrays.size(), kNullOp);
+  std::vector<NDArray> grad_store(ret->arg_arrays.size());
+  std::vector<OpReqType> grad_req(ret->arg_arrays.size(), kNullOp);
 
 
   ret->exec.reset(Executor::Bind(sym, ctx, ctx_map,
