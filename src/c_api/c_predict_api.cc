@@ -251,11 +251,11 @@ int MXPredCreatePartialOut(const char* symbol_json_str,
 
 int MXPredCreateEx(const char* symbol_json_str,
                    int dev_type, int dev_id,
-                   const char** input_keys,  // all input names
-                   const mx_float** input_data,  // all input data
+                   const char** input_keys,
+                   const mx_float** input_data,
                    const mx_uint* input_shape_indptr,
                    const mx_uint* input_shape_data,
-                   const mx_uint num_input_nodes,  // num of all inputs
+                   const mx_uint num_input_nodes,
                    PredictorHandle* out) {
   return MXPredCreatePartialOutEx(symbol_json_str,
                                   dev_type,
@@ -272,11 +272,11 @@ int MXPredCreateEx(const char* symbol_json_str,
 
 int MXPredCreatePartialOutEx(const char* symbol_json_str,
                              int dev_type, int dev_id,
-                             const char** input_keys,  // all input names
-                             const mx_float** input_data,  // all input data
+                             const char** input_keys,
+                             const mx_float** input_data,
                              const mx_uint* input_shape_indptr,
                              const mx_uint* input_shape_data,
-                             const mx_uint num_input_nodes,  // num of all inputs
+                             const mx_uint num_input_nodes,
                              const mx_uint num_output_nodes,
                              const char** output_keys,
                              PredictorHandle* out) {
