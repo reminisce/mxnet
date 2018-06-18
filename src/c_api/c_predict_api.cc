@@ -334,6 +334,10 @@ int MXPredCreatePartialOutEx(const char* symbol_json_str,
   const std::vector<std::string> arg_names = sym.ListInputNames(Symbol::kReadOnlyArgs);
   const std::vector<std::string> aux_names = sym.ListInputNames(Symbol::kAuxiliaryStates);
   CHECK_EQ(input_shape_map.size(), arg_names.size() + aux_names.size());
+  for (size_t i = 0; i < arg_names.size(); ++i) {
+    std::string key = arg_names[i];
+    ret->key2arg[key] = i;
+  }
   // load args
   ret->arg_arrays.clear();
   ret->arg_arrays.reserve(arg_names.size());
