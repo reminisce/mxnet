@@ -175,26 +175,33 @@ def test_trainer_save_load():
     # check if parameter dict is correctly associated with optimizer after load_state
     assert trainer._kvstore._updater.optimizer._get_lr(0) == 0.2
 
+@unittest.skip("temporarily disabled till it gets fixed. tracked at https://github.com/apache/incubator-mxnet/issues/11353")
 @with_seed()
 def test_trainer_reset_kv():
-    params = gluon.ParameterDict()
-    x = params.get('x', shape=(10,), lr_mult=1.0)
-    params.initialize(ctx=[mx.cpu(0), mx.cpu(1)], init='zeros')
-    trainer = gluon.Trainer(params, 'sgd', {'learning_rate': 0.1})
-    params.save('test_trainer_reset_kv.params')
-    with mx.autograd.record():
-        for w in x.list_data():
-            y = w + 1
-            y.backward()
-    trainer.step(1)
-    # load would reset kvstore
-    params.load('test_trainer_reset_kv.params')
-    assert trainer._kvstore is None
-    assert trainer._kv_initialized is False
-    with mx.autograd.record():
-        for w in x.list_data():
-            y = w + 1
-            y.backward()
-    trainer.step(1)
-    # the updated parameter should be based on the loaded checkpoint
-    assert (x.data(mx.cpu()) == -0.2).asnumpy().all()
+    def check_trainer_reset_kv(kv):
+        params = gluon.ParameterDict()
+        x = params.get('x', shape=(10,), lr_mult=1.0)
+        params.initialize(ctx=[mx.cpu(0), mx.cpu(1)], init='zeros')
+        trainer = gluon.Trainer(params, 'sgd', {'learning_rate': 0.1}, kvstore=kv)
+        params.save('test_trainer_reset_kv.params')
+        with mx.autograd.record():
+            for w in x.list_data():
+                y = w + 1
+                y.backward()
+        trainer.step(1)
+        assert trainer._kvstore.type == kv
+        # load would reset kvstore
+        params.load('test_trainer_reset_kv.params')
+        assert trainer._kvstore is None
+        assert trainer._kv_initialized is False
+        with mx.autograd.record():
+            for w in x.list_data():
+                y = w + 1
+                y.backward()
+        trainer.step(1)
+        # the updated parameter should be based on the loaded checkpoint
+        assert (x.data(mx.cpu()) == -0.2).asnumpy().all()
+
+    kvs = ['local', 'device']
+    for kv in kvs:
+        check_trainer_reset_kv(kv)

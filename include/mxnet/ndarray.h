@@ -156,7 +156,7 @@ class NDArray {
   }
 
   /* \brief Check whether the two arrays are the same array */
-  inline bool IsSame(const NDArray& other) {
+  inline bool IsSame(const NDArray& other) const {
     return ptr_ == other.ptr_ &&
         shape_ == other.shape_ &&
         byte_offset_ == other.byte_offset_ &&
@@ -337,6 +337,10 @@ class NDArray {
   /*! \return byte offset in chunk of the ndarray*/
   inline size_t byte_offset() const {
     return byte_offset_;
+  }
+  /*! \brief return var version of the NDArray*/
+  inline uint32_t version() const {
+    return var()->version();
   }
   /*!
    * \brief save the content into binary stream

@@ -1431,13 +1431,15 @@ MXNET_DLL int MXSymbolInferType(SymbolHandle sym,
  * \param excluded_symbols array of symbols to be excluded from being quantized
  * \param num_offline number of parameters that are quantized offline
  * \param offline_params array of c strings representing the names of params quantized offline
+ * \param quantized_dtype the quantized destination type for input data.
  */
 MXNET_DLL int MXQuantizeSymbol(SymbolHandle sym_handle,
                                SymbolHandle *ret_sym_handle,
                                const mx_uint num_excluded_symbols,
                                const SymbolHandle *excluded_symbols,
                                const mx_uint num_offline,
-                               const char **offline_params);
+                               const char **offline_params,
+                               const char *quantized_dtype);
 
 /*!
  * \brief Set calibration table to node attributes in the sym
@@ -1454,6 +1456,11 @@ MXNET_DLL int MXSetCalibTableToQuantizedSymbol(SymbolHandle qsym_handle,
                                                const float* low_quantiles,
                                                const float* high_quantiles,
                                                SymbolHandle* ret_sym_handle);
+
+MXNET_DLL int MXPartitionGraph(SymbolHandle sym_handle,
+                               const mx_uint num_ops,
+                               const char** op_names,
+                               SymbolHandle* ret_sym_handle);
 
 //--------------------------------------------
 // Part 4: Executor interface
