@@ -45,6 +45,9 @@ struct MXAPIPredictor {
   std::vector<NDArray> arg_arrays;
   // auxiliary arrays
   std::vector<NDArray> aux_arrays;
+  // output names
+  std::vector<std::string> out_names;
+  std::vector<const char*> out_names_buffer;
   // output shapes
   std::vector<TShape> out_shapes;
   // uint32_t buffer for output shapes
@@ -184,7 +187,8 @@ int MXPredCreatePartialOut(const char* symbol_json_str,
   }
   std::vector<std::string> arg_names = sym.ListInputNames(Symbol::kReadOnlyArgs);
   std::vector<std::string> aux_names = sym.ListInputNames(Symbol::kAuxiliaryStates);
-  std::vector<TShape> out_shapes(sym.ListOutputNames().size());
+  std::vector<std::string> out_names = sym.ListOutputNames();
+  std::vector<TShape> out_shapes(out_names.size());
   std::vector<TShape> aux_shapes(aux_names.size());
   std::vector<TShape> arg_shapes;
   for (size_t i = 0; i < arg_names.size(); ++i) {
@@ -242,8 +246,17 @@ int MXPredCreatePartialOut(const char* symbol_json_str,
                                    arg_arrays,
                                    grad_store, grad_req,
                                    aux_arrays));
-    ret->out_shapes = out_shapes;
     ret->out_arrays = ret->exec->outputs();
+
+    CHECK(out_shapes.size() == ret->out_arrays.size());
+    CHECK(out_names.size() == ret->out_arrays.size());
+
+    ret->out_shapes = out_shapes;
+    ret->out_names = out_names;
+
+    ret->out_names_buffer.resize(ret->out_names.size());
+    std::transform(ret->out_names.begin(), ret->out_names.end(), ret->out_names_buffer.begin(),
+        [](const std::string& name) { return name.c_str(); });
   }
   *out = ret;
   API_END_HANDLE_ERROR(delete ret);
@@ -333,6 +346,7 @@ int MXPredCreatePartialOutEx(const char* symbol_json_str,
 
   const std::vector<std::string> arg_names = sym.ListInputNames(Symbol::kReadOnlyArgs);
   const std::vector<std::string> aux_names = sym.ListInputNames(Symbol::kAuxiliaryStates);
+  const std::vector<std::string> out_names = sym.ListOutputNames();
   CHECK_EQ(input_shape_map.size(), arg_names.size() + aux_names.size());
   for (size_t i = 0; i < arg_names.size(); ++i) {
     std::string key = arg_names[i];
@@ -366,9 +380,17 @@ int MXPredCreatePartialOutEx(const char* symbol_json_str,
                                  grad_store, grad_req,
                                  ret->aux_arrays));
   ret->out_arrays = ret->exec->outputs();
+
+  CHECK(out_names.size() == ret->out_arrays.size());
+  ret->out_names = out_names;
+  ret->out_names_buffer.resize(ret->out_names.size());
+  std::transform(ret->out_names.begin(), ret->out_names.end(), ret->out_names_buffer.begin(),
+      [](const std::string& name) { return name.c_str(); });
+
   ret->out_shapes.resize(ret->out_arrays.size());
   std::transform(ret->out_arrays.begin(), ret->out_arrays.end(), ret->out_shapes.begin(),
       [](const NDArray& nd) { return nd.shape(); });
+
   *out = ret;
   API_END_HANDLE_ERROR(delete ret);
 }
@@ -393,7 +415,8 @@ int MXPredReshape(mx_uint num_input_nodes,
   ret->sym = p->sym;
   std::vector<std::string> arg_names = ret->sym.ListInputNames(Symbol::kReadOnlyArgs);
   std::vector<std::string> aux_names = ret->sym.ListInputNames(Symbol::kAuxiliaryStates);
-  std::vector<TShape> out_shapes(ret->sym.ListOutputNames().size());
+  std::vector<std::string> out_names = ret->sym.ListOutputNames();
+  std::vector<TShape> out_shapes(out_names.size());
   std::vector<TShape> aux_shapes(aux_names.size());
   std::vector<TShape> arg_shapes;
   ret->key2arg = p->key2arg;
@@ -457,10 +480,29 @@ int MXPredReshape(mx_uint num_input_nodes,
                                    grad_store, grad_req,
                                    ret->aux_arrays,
                                    p->exec.get()));
-    ret->out_shapes = out_shapes;
     ret->out_arrays = ret->exec->outputs();
+
+    CHECK(out_shapes.size() == ret->out_arrays.size());
+    CHECK(out_names.size() == ret->out_arrays.size());
+
+    ret->out_shapes = out_shapes;
+    ret->out_names = out_names;
+
+    ret->out_names_buffer.resize(ret->out_names.size());
+    std::transform(ret->out_names.begin(), ret->out_names.end(), ret->out_names_buffer.begin(),
+        [](const std::string& name) { return name.c_str(); });
   }
   *out = ret.release();
+  API_END();
+}
+
+int MXPredGetOutputNames(PredictorHandle handle,
+                         mx_uint *out_names_length,
+                         const char ***out_names) {
+  MXAPIPredictor* p = static_cast<MXAPIPredictor*>(handle);
+  API_BEGIN();
+  *out_names = p->out_names_buffer.data();
+  *out_names_length = p->out_names_buffer.size();
   API_END();
 }
 
