@@ -196,6 +196,11 @@ class TBlob {
     CHECK(mshadow::DataType<DType>::kFlag == type_flag_)
       << "TBlob.get_with_shape: data type do not match specified type."
       << "Expected: " << type_flag_ << " v.s. given " << mshadow::DataType<DType>::kFlag;
+    // TODO(junwu): verify correctness
+    // if scalar, handle it with special care
+    if (ndim() == 0) {
+      return this->get_with_shape<Device, 2, DType>(mshadow::Shape2(1, 1), stream);
+    }
     return mshadow::Tensor<Device, 2, DType>(static_cast<DType*>(dptr_),
                                              shape_.FlatTo2D(),
                                              shape_[shape_.ndim() - 1],

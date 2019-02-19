@@ -159,13 +159,13 @@ inline std::string type_string(const int& x) {
  * \return whether x and y are compatible.
  */
 inline bool shape_assign(TShape *y, const TShape& x) {
-  if (y->ndim() == 0) {
+  if (y->ndim() == -1) {
     *y = x;
     return true;
   } else if (y->ndim() != x.ndim()) {
-    return x.ndim() == 0;
+    return x.ndim() == -1;
   } else {
-    for (size_t i = 0; i < y->ndim(); ++i) {
+    for (int i = 0; i < y->ndim(); ++i) {
       if ((*y)[i] == 0) {
         (*y)[i] = x[i];
       } else if ((*y)[i] != x[i] && x[i] != 0) {

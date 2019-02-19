@@ -221,12 +221,27 @@ inline bool ReduceAxisShape(const nnvm::NodeAttrs& attrs,
 
 inline TShape ReduceAxesShapeImpl(const TShape& ishape, const dmlc::optional<TShape>& axis,
                                   bool keepdims, bool exclude) {
+  // TODO(junwu): improve the logic
+  // If input is a scalar, output should be a scalar too
+  if (ishape.ndim() == 0) {
+    if (axis.has_value()) {
+      TShape axes(axis.value());
+      if (axes.ndim() > 0) {
+        CHECK_EQ(axes.ndim(), 1);
+        CHECK(axes[0] == 0 || axes[0] == -1);
+      }
+    }
+    return TShape();
+  }
+
   // if axis doesn't have value, treat it same TShape().
-  if (!axis.has_value() || axis.value().ndim() == 0) {
+  if (!axis.has_value() || axis.value().ndim() <= 0) {
     if (keepdims) {
       return TShape(ishape.ndim());
     } else {
-      return TShape(1);
+      // TODO(junwu): Verify the correctness
+      // return TShape(1);
+      return TShape(0);
     }
   }
   // axis has value
@@ -256,7 +271,9 @@ inline TShape ReduceAxesShapeImpl(const TShape& ishape, const dmlc::optional<TSh
   } else if (exclude) {
     oshape = TShape(axes.ndim());
   } else {
-    oshape = TShape(std::max<index_t>(1, ishape.ndim() - axes.ndim()));
+    // TODO(junwu): Verify correctness
+    // oshape = TShape(std::max<index_t>(1, ishape.ndim() - axes.ndim()));
+    oshape = TShape(ishape.ndim() - axes.ndim());
   }
 
   if (keepdims && exclude) {
@@ -292,7 +309,8 @@ inline bool ReduceAxesShape(const nnvm::NodeAttrs& attrs,
                             std::vector<TShape> *out_attrs) {
   CHECK_EQ(in_attrs->size(), 1U);
   CHECK_EQ(out_attrs->size(), 1U);
-  if ((*in_attrs)[0].ndim() == 0) return false;
+  // TODO(junwu): better handling for zero-dim array
+  // if ((*in_attrs)[0].ndim() == 0) return false;
   const ReduceAxesParam& param = nnvm::get<ReduceAxesParam>(attrs.parsed);
   SHAPE_ASSIGN_CHECK(*out_attrs, 0,
                      ReduceAxesShapeImpl((*in_attrs)[0], param.axis,

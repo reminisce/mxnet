@@ -336,7 +336,9 @@ nnvm::Graph InferShape(nnvm::Graph&& graph,
       std::move(graph), nnvm::TShape(),
       "FInferShape", "shape_inputs", "shape_attr_key",
       "shape", "shape_num_unknown_nodes",
-      [](const nnvm::TShape& s) { return s.ndim() == 0 || s.Size() == 0; },
+      // TODO(junwu): verify correctness
+      // [](const nnvm::TShape& s) { return s.ndim() == 0 || s.Size() == 0; },
+      [](const nnvm::TShape& s) { return s.ndim() == -1 || s.Size() == 0; },
       nullptr, true, nullptr);
 }
 

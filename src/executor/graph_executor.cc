@@ -966,7 +966,9 @@ void GraphExecutor::InitDataEntryMemory(std::vector<NDArray>* shared_pool) {
     uint32_t oid = head_grad_map_.at(idx[nid].source);
     uint32_t eid = idx.entry_id(idx.outputs()[oid]);
     NDArrayStorageType stype = (NDArrayStorageType) vstorage_type[eid];
-    CHECK_NE(vshape[eid].ndim(), 0U);
+    // TODO(junwu): verify correctness
+    // CHECK_NE(vshape[eid].ndim(), 0U);
+    CHECK_NE(vshape[eid].Size(), 0U);
     CHECK_NE(vdtype[eid], -1);
     auto data_eid = idx.entry_id(nid, 0);
     // initialize based on storage_type
