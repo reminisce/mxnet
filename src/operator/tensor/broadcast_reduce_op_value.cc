@@ -79,6 +79,7 @@ void L2NormComputeEx<cpu>(const nnvm::NodeAttrs& attrs,
 MXNET_OPERATOR_REGISTER_REDUCE(sum)
 MXNET_ADD_SPARSE_OP_ALIAS(sum)
 .add_alias("sum_axis")
+.add_alias("_numpy_sum")
 .describe(R"code(Computes the sum of array elements over given axes.
 
 .. Note::
