@@ -134,7 +134,13 @@ inline bool NumpyReduceAxesShape(const nnvm::NodeAttrs& attrs,
   return shape_is_known(out_attrs->at(0));
 }
 
-template<typename xpu, typename reducer, bool normalize = false,
+template<bool safe_acc_hint = false>
+inline bool NeedSafeAcc(int itype, int otype) {
+  bool rule = (itype != otype) || (itype != mshadow::kFloat32 && itype != mshadow::kFloat64);
+  return safe_acc_hint && rule;
+}
+
+template<typename xpu, typename reducer, bool safe_acc_hint = false, bool normalize = false,
          typename OP = op::mshadow_op::identity>
 void NumpyReduceAxesCompute(const nnvm::NodeAttrs& attrs,
                             const OpContext& ctx,
@@ -152,7 +158,11 @@ void NumpyReduceAxesCompute(const nnvm::NodeAttrs& attrs,
     small = NumpyReduceAxesShapeImpl(inputs[0].shape_, param.axis, true);
   }
 
-  ReduceAxesComputeImpl<xpu, reducer, normalize, OP>(ctx, inputs, req, outputs, small);
+  if (NeedSafeAcc<safe_acc_hint>(inputs[0].type_flag_, outputs[0].type_flag_)) {
+    ReduceAxesComputeImpl<xpu, reducer, true, normalize, OP>(ctx, inputs, req, outputs, small);
+  } else {
+    ReduceAxesComputeImpl<xpu, reducer, false, normalize, OP>(ctx, inputs, req, outputs, small);
+  }
 }
 
 template<typename xpu, bool normalize = false>

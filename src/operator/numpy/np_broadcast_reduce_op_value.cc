@@ -43,7 +43,7 @@ NNVM_REGISTER_OP(_numpy_sum)
   })
 .add_argument("a", "NDArray-or-Symbol", "The input")
 .add_arguments(NumpyReduceAxesParam::__FIELDS__())
-.set_attr<FCompute>("FCompute<cpu>", NumpyReduceAxesCompute<cpu, mshadow::red::sum>)
+.set_attr<FCompute>("FCompute<cpu>", NumpyReduceAxesCompute<cpu, mshadow_op::sum, true>)
 .set_attr<FResourceRequest>("FResourceRequest",
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
