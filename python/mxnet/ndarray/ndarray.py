@@ -47,7 +47,8 @@ __all__ = ["NDArray", "concatenate", "_DTYPE_NP_TO_MX", "_DTYPE_MX_TO_NP", "_GRA
            "imdecode", "lesser", "lesser_equal", "logical_and", "logical_or", "logical_xor",
            "maximum", "minimum", "moveaxis", "modulo", "multiply", "not_equal", "onehot_encode",
            "power", "subtract", "true_divide", "waitall", "_new_empty_handle", "histogram",
-           "split_v2", "to_dlpack_for_read", "to_dlpack_for_write", "from_dlpack"]
+           "split_v2", "to_dlpack_for_read", "to_dlpack_for_write", "from_dlpack",
+           "_new_alloc_handle"]
 
 _STORAGE_TYPE_UNDEFINED = -1
 _STORAGE_TYPE_DEFAULT = 0
@@ -183,6 +184,14 @@ fixed-size items.
     # See C++ side of definition(kTVMNDArrayTypeCode) at include/mxmet/tensor_blob.h
     _tvm_tcode = 19
     # pylint: disable= no-member, undefined-variable
+
+    def as_np_ndarray(self):
+        """Convert mxnet.ndarray.NDArray to mxnet.numpy.ndarray."""
+        from ..numpy import ndarray
+        hdl = NDArrayHandle()
+        check_call(_LIB.MXShallowCopyNDArray(self.handle, ctypes.byref(hdl)))
+        return ndarray(handle=hdl, writable=self.writable)
+
     @property
     def _tvm_handle(self):
         return self.handle.value
