@@ -866,7 +866,11 @@ class NDArray {
           engine_ref_(Engine::_GetSharedRef()) {
       storage_shape = shape;
       if (shape_is_known(storage_shape)) {
-        shandle.size = shape.Size() * mshadow::mshadow_sizeof(dtype);
+        if (dtype == 20) {
+          shandle.size = storage_shape.Size() * sizeof(bool);
+        } else {
+          shandle.size = storage_shape.Size() * mshadow::mshadow_sizeof(dtype);
+        }
       }
       var = Engine::Get()->NewVariable();
       shandle.ctx = ctx_;

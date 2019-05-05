@@ -64,6 +64,7 @@ _DTYPE_NP_TO_MX = {
     np.int32: 4,
     np.int8: 5,
     np.int64: 6,
+    np.bool_: 20,
 }
 
 _DTYPE_MX_TO_NP = {
@@ -75,6 +76,7 @@ _DTYPE_MX_TO_NP = {
     4: np.int32,
     5: np.int8,
     6: np.int64,
+    20: np.bool_,
 }
 
 _STORAGE_TYPE_STR_TO_ID = {

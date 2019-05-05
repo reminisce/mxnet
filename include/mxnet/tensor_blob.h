@@ -233,9 +233,11 @@ class TBlob {
   /*! \brief get pointer in dtype */
   template<typename DType>
   inline DType* dptr() const {
+#if 0
     CHECK(mshadow::DataType<DType>::kFlag == type_flag_)
       << "TBlob.get_with_shape: data type do not match specified type."
       << "Expected: " << type_flag_ << " v.s. given " << mshadow::DataType<DType>::kFlag;
+#endif
     return static_cast<DType*>(dptr_);
   }
   /*! \brief device mask of the corresponding device */
@@ -363,6 +365,7 @@ class TBlob {
       case mshadow::kInt32: return DLDataType{kDLInt, 32, 1};
       case mshadow::kInt8: return DLDataType{kDLInt, 8, 1};
       case mshadow::kInt64: return DLDataType{kDLInt, 64, 1};
+      case 20: return DLDataType{kDLInt, 8, 1};
       default: {
         LOG(FATAL) << "Unknown type_flag=" << type_flag;
         return DLDataType();
