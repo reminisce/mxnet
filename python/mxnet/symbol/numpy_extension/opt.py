@@ -15,12 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Module for the ops not belonging to the official numpy package."""
+"""Optimization operators."""
 
-from . import _op
-from . import image
-from . import opt
-from . import _register
-from ._op import *  # pylint: disable=wildcard-import
-
-__all__ = _op.__all__
+__all__ = []

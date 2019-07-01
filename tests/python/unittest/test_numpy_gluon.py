@@ -96,8 +96,10 @@ def test_optimizer_with_np_ndarrays():
     total_loss.hybridize()
 
     trainer = gluon.Trainer(regressor.collect_params(),
-                            'sgd',
-                            {'learning_rate': 1e-3, 'momentum': 0.9})
+                            #'sgd',
+                            'adam',
+                            {'learning_rate': 1e-3#, 'momentum': 0.9
+                             })
 
     for t in range(5):
         with autograd.record():
@@ -108,5 +110,7 @@ def test_optimizer_with_np_ndarrays():
 
 
 if __name__ == '__main__':
+    test_optimizer_with_np_ndarrays()
+    exit(0)
     import nose
     nose.runmodule()

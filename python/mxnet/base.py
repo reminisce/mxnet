@@ -744,7 +744,7 @@ _NP_OP_PREFIX = '_np_'
 _NP_OP_SUBMODULE_LIST = ['_random_', '_linalg_']
 
 _NP_EXT_OP_PREFIX = '_npx_'
-_NP_EXT_OP_SUBMODULE_LIST = ['_image_']
+_NP_EXT_OP_SUBMODULE_LIST = ['_image_', '_opt_']
 
 _NP_INTERNAL_OP_PREFIX = '_npi_'
 

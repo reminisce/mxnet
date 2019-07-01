@@ -35,6 +35,8 @@ from ..ndarray import (sgd_update, sgd_mom_update, adam_update, rmsprop_update, 
 from ..ndarray import sparse
 from ..random import normal
 from ..util import is_np_array
+from .. import numpy as _mx_np  # pylint: disable=reimport
+from .. import numpy_extension as _mx_npx
 
 __all__ = [
     'AdaDelta', 'AdaGrad', 'Adam', 'Adamax', 'DCASGD', 'FTML', 'Ftrl', 'LBSGD',
@@ -121,7 +123,8 @@ class Optimizer(object):
         self.idx2name = param_idx2name.copy()
         self.sym_info = (sym.attr_dict(), sym.list_arguments()) if sym is not None else ()
         self.param_dict = param_dict if param_dict else {}
-        self.allow_np_array = is_np_array()
+        # self._use_np_array = is_np_array()
+        self._use_np_array = is_np_array()
 
         self.set_lr_mult({})
         self.set_wd_mult({})
@@ -584,7 +587,12 @@ class SGD(Optimizer):
         momentum = None
         if self.momentum != 0.0:
             stype = weight.stype if self.lazy_update else 'default'
-            momentum = zeros(weight.shape, weight.context, dtype=weight.dtype, stype=stype)
+            if self._use_np_array:
+                if stype != 'default':
+                    raise ValueError('mxnet.numpy does not support stype {}'.format(stype))
+                momentum = _mx_np.zeros(weight.shape, ctx=weight.context, dtype=weight.dtype)
+            else:
+                momentum = zeros(weight.shape, weight.context, dtype=weight.dtype, stype=stype)
         return momentum
 
     def _update_impl(self, indices, weights, grads, states, multi_precision=False):
@@ -613,11 +621,15 @@ class SGD(Optimizer):
         if aggregate:
             if not multi_precision:
                 if self.momentum > 0:
-                    multi_sgd_mom_update(*_flatten_list(zip(weights, grads, states)), out=weights,
-                                         num_weights=len(weights), lrs=lrs, wds=wds, **kwargs)
+                    update_fn = _mx_npx.opt.multi_sgd_mom_update if self._use_np_array \
+                        else multi_sgd_mom_update
+                    update_fn(*_flatten_list(zip(weights, grads, states)), out=weights,
+                              num_weights=len(weights), lrs=lrs, wds=wds, **kwargs)
                 else:
-                    multi_sgd_update(*_flatten_list(zip(weights, grads)), out=weights,
-                                     num_weights=len(weights), lrs=lrs, wds=wds, **kwargs)
+                    update_fn = _mx_npx.opt.multi_sgd_update if self._use_np_array \
+                        else multi_sgd_update
+                    update_fn(*_flatten_list(zip(weights, grads)), out=weights,
+                              num_weights=len(weights), lrs=lrs, wds=wds, **kwargs)
             else:
                 if self.momentum > 0:
                     multi_mp_sgd_mom_update(*_flatten_list(zip(weights, grads, *zip(*states))),
@@ -632,10 +644,14 @@ class SGD(Optimizer):
             for weight, grad, state, lr, wd in zip(weights, grads, states, lrs, wds):
                 if not multi_precision:
                     if state is not None:
-                        sgd_mom_update(weight, grad, state, out=weight,
-                                       lazy_update=self.lazy_update, lr=lr, wd=wd, **kwargs)
+                        update_fn = _mx_npx.opt.sgd_mom_update if self._use_np_array \
+                            else sgd_mom_update
+                        update_fn(weight, grad, state, out=weight,
+                                  lazy_update=self.lazy_update, lr=lr, wd=wd, **kwargs)
                     else:
-                        sgd_update(weight, grad, out=weight, lazy_update=self.lazy_update,
+                        update_fn = _mx_npx.opt.sgd_update if self._use_np_array \
+                            else sgd_update
+                        update_fn(weight, grad, out=weight, lazy_update=self.lazy_update,
                                    lr=lr, wd=wd, **kwargs)
                 else:
                     if state[0] is not None:
@@ -1203,10 +1219,16 @@ class Adam(Optimizer):
 
     def create_state(self, index, weight):
         stype = weight.stype if self.lazy_update else 'default'
-        return (zeros(weight.shape, weight.context, dtype=weight.dtype,
-                      stype=stype),  # mean
-                zeros(weight.shape, weight.context, dtype=weight.dtype,
-                      stype=stype))  # variance
+        if self._use_np_array:
+            if stype != 'default':
+                raise ValueError('mxnet.numpy does not support stype {}'.format(stype))
+            return (_mx_np.zeros(weight.shape, ctx=weight.context, dtype=weight.dtype),  # mean
+                    _mx_np.zeros(weight.shape, ctx=weight.context, dtype=weight.dtype))  # variance
+        else:
+            return (zeros(weight.shape, weight.context, dtype=weight.dtype,
+                          stype=stype),  # mean
+                    zeros(weight.shape, weight.context, dtype=weight.dtype,
+                          stype=stype))  # variance
 
     def update(self, index, weight, grad, state):
         assert(isinstance(weight, NDArray))
@@ -1226,8 +1248,9 @@ class Adam(Optimizer):
             kwargs['clip_gradient'] = self.clip_gradient
 
         mean, var = state
-        adam_update(weight, grad, mean, var, out=weight,
-                    lazy_update=self.lazy_update, lr=lr, wd=wd, **kwargs)
+        update_fn = _mx_npx.opt.adam_update if self._use_np_array else adam_update
+        update_fn(weight, grad, mean, var, out=weight,
+                  lazy_update=self.lazy_update, lr=lr, wd=wd, **kwargs)
 
 @register
 class AdaGrad(Optimizer):
@@ -1679,15 +1702,14 @@ class Updater(object):
 
     def __call__(self, index, grad, weight):
         """Updates weight given gradient and index."""
-        allow_np = self.optimizer.allow_np_array
         if not isinstance(index, (list, tuple)):
             indices = [index]
-            grads = [_as_classic(grad, allow_np)]
-            weights = [_as_classic(weight, allow_np)]
+            grads = [grad]
+            weights = [weight]
         else:
             indices = index
-            grads = _as_classic(grad, allow_np)
-            weights = _as_classic(weight, allow_np)
+            grads = grad
+            weights = weight
         if weights:
             self.optimizer._set_current_context(weights[0].context.device_id)
         for i, idx in enumerate(indices):

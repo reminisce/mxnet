@@ -29,6 +29,9 @@ from .base import check_call, string_types, mx_uint, py_str
 from .base import NDArrayHandle, KVStoreHandle
 from . import optimizer as opt
 from .profiler import set_kvstore_handle
+from .util import is_np_array
+from .numpy import ndarray as np_ndarray
+
 
 def _ctype_key_value(keys, vals):
     """
@@ -77,10 +80,11 @@ def _ctype_dict(param_dict):
 
 def _updater_wrapper(updater):
     """A wrapper for the user-defined handle."""
+    create_fn = np_ndarray if is_np_array() else _ndarray_cls
     def updater_handle(key, lhs_handle, rhs_handle, _):
         """ ctypes function """
-        lhs = _ndarray_cls(NDArrayHandle(lhs_handle))
-        rhs = _ndarray_cls(NDArrayHandle(rhs_handle))
+        lhs = create_fn(NDArrayHandle(lhs_handle))
+        rhs = create_fn(NDArrayHandle(rhs_handle))
         updater(key, lhs, rhs)
     return updater_handle
 

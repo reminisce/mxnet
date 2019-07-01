@@ -45,6 +45,7 @@ DMLC_REGISTER_PARAMETER(SignumParam);
 DMLC_REGISTER_PARAMETER(AdagradParam);
 
 NNVM_REGISTER_OP(signsgd_update)
+.add_alias("_npx__opt_signsgd_update")
 .describe(R"code(Update function for SignSGD optimizer.
 
 .. math::
@@ -71,6 +72,7 @@ It updates the weights using::
 
 
 NNVM_REGISTER_OP(signum_update)
+.add_alias("_npx__opt_signum_update")
 .describe(R"code(SIGN momentUM (Signum) optimizer.
 
 .. math::
@@ -318,6 +320,7 @@ inline bool SGDStorageType(const nnvm::NodeAttrs& attrs,
 }
 
 NNVM_REGISTER_OP(multi_sgd_update)
+.add_alias("_npx__opt_multi_sgd_update")
 .describe(R"code(Update function for Stochastic Gradient Descent (SDG) optimizer.
 
 It updates the weights using::
@@ -351,6 +354,7 @@ It updates the weights using::
 .add_arguments(MultiSGDParam::__FIELDS__());
 
 NNVM_REGISTER_OP(multi_sgd_mom_update)
+.add_alias("_npx__opt_multi_sgd_mom_update")
 .describe(R"code(Momentum update function for Stochastic Gradient Descent (SGD) optimizer.
 
 Momentum update has better convergence rates on neural networks. Mathematically it looks
@@ -406,6 +410,7 @@ Where the parameter ``momentum`` is the decay rate of momentum estimates at each
 .add_arguments(MultiSGDMomParam::__FIELDS__());
 
 NNVM_REGISTER_OP(multi_mp_sgd_update)
+.add_alias("_npx__opt_multi_mp_sgd_update")
 .describe(R"code(Update function for multi-precision Stochastic Gradient Descent (SDG) optimizer.
 
 It updates the weights using::
@@ -449,6 +454,7 @@ It updates the weights using::
 .add_arguments(MultiSGDParam::__FIELDS__());
 
 NNVM_REGISTER_OP(multi_mp_sgd_mom_update)
+.add_alias("_npx__opt_multi_mp_sgd_mom_update")
 .describe(R"code(Momentum update function for multi-precision Stochastic Gradient Descent (SGD) optimizer.
 
 Momentum update has better convergence rates on neural networks. Mathematically it looks
@@ -506,6 +512,7 @@ Where the parameter ``momentum`` is the decay rate of momentum estimates at each
 .add_arguments(MultiSGDMomParam::__FIELDS__());
 
 NNVM_REGISTER_OP(sgd_update)
+.add_alias("_npx__opt_sgd_update")
 MXNET_ADD_SPARSE_OP_ALIAS(sgd_update)
 .describe(R"code(Update function for Stochastic Gradient Descent (SGD) optimizer.
 
@@ -533,6 +540,7 @@ only the row slices whose indices appear in grad.indices are updated::
 .add_arguments(SGDParam::__FIELDS__());
 
 NNVM_REGISTER_OP(sgd_mom_update)
+.add_alias("_npx__opt_sgd_mom_update")
 MXNET_ADD_SPARSE_OP_ALIAS(sgd_mom_update)
 .describe(R"code(Momentum update function for Stochastic Gradient Descent (SGD) optimizer.
 
@@ -587,6 +595,7 @@ only the row slices whose indices appear in grad.indices are updated (for both w
 .add_arguments(SGDMomParam::__FIELDS__());
 
 NNVM_REGISTER_OP(mp_sgd_update)
+.add_alias("_npx__opt_mp_sgd_update")
 .describe("Updater function for multi-precision sgd optimizer")
 .set_num_inputs(3)
 .set_num_outputs(1)
@@ -604,6 +613,7 @@ NNVM_REGISTER_OP(mp_sgd_update)
 .add_arguments(SGDParam::__FIELDS__());
 
 NNVM_REGISTER_OP(mp_sgd_mom_update)
+.add_alias("_npx__opt_mp_sgd_mom_update")
 .describe("Updater function for multi-precision sgd optimizer")
 .set_num_inputs(4)
 .set_num_outputs(1)
@@ -622,6 +632,7 @@ NNVM_REGISTER_OP(mp_sgd_mom_update)
 .add_arguments(SGDMomParam::__FIELDS__());
 
 NNVM_REGISTER_OP(ftml_update)
+.add_alias("_npx__opt_ftml_update")
 .describe(R"code(The FTML optimizer described in
 *FTML - Follow the Moving Leader in Deep Learning*,
 available at http://proceedings.mlr.press/v70/zheng17a/zheng17a.pdf.
@@ -654,6 +665,7 @@ available at http://proceedings.mlr.press/v70/zheng17a/zheng17a.pdf.
 .add_arguments(FTMLParam::__FIELDS__());
 
 NNVM_REGISTER_OP(adam_update)
+.add_alias("_npx__opt_adam_update")
 MXNET_ADD_SPARSE_OP_ALIAS(adam_update)
 .describe(R"code(Update function for Adam optimizer. Adam is seen as a generalization
 of AdaGrad.
@@ -708,6 +720,7 @@ only the row slices whose indices appear in grad.indices are updated (for w, m a
 
 
 NNVM_REGISTER_OP(nag_mom_update)
+.add_alias("_npx__opt_nag_mom_update")
 .describe(R"code(Update function for Nesterov Accelerated Gradient( NAG) optimizer.
 It updates the weights using the following formula,
 
@@ -739,6 +752,7 @@ Where
 
 
 NNVM_REGISTER_OP(mp_nag_mom_update)
+.add_alias("_npx__opt_mp_nag_mom_update")
 .describe(R"code(Update function for multi-precision Nesterov Accelerated Gradient( NAG) optimizer.
 )code" ADD_FILELINE)
 .set_num_inputs(4)
@@ -759,6 +773,7 @@ NNVM_REGISTER_OP(mp_nag_mom_update)
 
 
 NNVM_REGISTER_OP(rmsprop_update)
+.add_alias("_npx__opt_rmsprop_update")
 .describe(R"code(Update function for `RMSProp` optimizer.
 
 `RMSprop` is a variant of stochastic gradient descent where the gradients are
@@ -809,6 +824,7 @@ Hinton suggests the momentum term :math:`\gamma` to be 0.9 and the learning rate
 .add_arguments(RMSPropParam::__FIELDS__());
 
 NNVM_REGISTER_OP(rmspropalex_update)
+.add_alias("_npx__opt_rmspropalex_update")
 .describe(R"code(Update function for RMSPropAlex optimizer.
 
 `RMSPropAlex` is non-centered version of `RMSProp`.
@@ -850,6 +866,7 @@ to be 0.9 and the learning rate :math:`\eta` to be 0.0001.
 .add_arguments(RMSPropAlexParam::__FIELDS__());
 
 NNVM_REGISTER_OP(ftrl_update)
+.add_alias("_npx__opt_ftrl_update")
 MXNET_ADD_SPARSE_OP_ALIAS(ftrl_update)
 .describe(R"code(Update function for Ftrl optimizer.
 Referenced from *Ad Click Prediction: a View from the Trenches*, available at
