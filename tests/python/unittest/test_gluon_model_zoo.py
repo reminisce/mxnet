@@ -18,6 +18,8 @@
 from __future__ import print_function
 import mxnet as mx
 from mxnet.gluon.model_zoo.vision import get_model
+from mxnet.numpy_extension import is_np_array
+from mxnet.test_utils import use_np
 import sys
 from common import setup_module, with_seed, teardown
 
@@ -39,15 +41,23 @@ def test_models():
                   'mobilenetv2_1.0', 'mobilenetv2_0.75', 'mobilenetv2_0.5', 'mobilenetv2_0.25']
     pretrained_to_test = set(['squeezenet1.1'])
 
-    for model_name in all_models:
-        test_pretrain = model_name in pretrained_to_test
-        model = get_model(model_name, pretrained=test_pretrain, root='model/')
-        data_shape = (2, 3, 224, 224) if 'inception' not in model_name else (2, 3, 299, 299)
-        eprint('testing forward for %s' % model_name)
-        print(model)
-        if not test_pretrain:
-            model.collect_params().initialize()
-        model(mx.nd.random.uniform(shape=data_shape)).wait_to_read()
+    def check_model():
+        for model_name in all_models:
+            test_pretrain = model_name in pretrained_to_test
+            model = get_model(model_name, pretrained=test_pretrain, root='model/')
+            data_shape = (2, 3, 224, 224) if 'inception' not in model_name else (2, 3, 299, 299)
+            eprint('testing forward for %s with NumPy mode %s' % (model_name, 'ON' if is_np_array() else 'OFF'))
+            print(model)
+            if not test_pretrain:
+                model.collect_params().initialize()
+            if is_np_array():
+                input_data = mx.np.random.uniform(size=data_shape)
+            else:
+                input_data = mx.nd.random.uniform(shape=data_shape)
+            model(input_data).wait_to_read()
+
+    check_model()
+    use_np(check_model)()
 
 
 if __name__ == '__main__':

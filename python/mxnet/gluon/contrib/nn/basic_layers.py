@@ -27,6 +27,9 @@ import warnings
 from .... import nd, context
 from ...block import HybridBlock, Block
 from ...nn import Sequential, HybridSequential, BatchNorm
+from ....numpy_extension import is_np_array
+from .... import numpy as _mx_np
+
 
 class Concurrent(Sequential):
     """Lays `Block` s concurrently.
@@ -57,8 +60,10 @@ class Concurrent(Sequential):
         out = []
         for block in self._children.values():
             out.append(block(x))
-        out = nd.concat(*out, dim=self.axis)
-        return out
+        if is_np_array():
+            return _mx_np.concatenate(out, axis=self.axis)
+        else:
+            return nd.concat(*out, dim=self.axis)
 
 
 class HybridConcurrent(HybridSequential):
@@ -90,8 +95,10 @@ class HybridConcurrent(HybridSequential):
         out = []
         for block in self._children.values():
             out.append(block(x))
-        out = F.concat(*out, dim=self.axis)
-        return out
+        if is_np_array():
+            return F.np.concatenate(out, axis=self.axis)
+        else:
+            return F.concat(*out, dim=self.axis)
 
 
 class Identity(HybridBlock):
