@@ -32,7 +32,7 @@
 		(line-seq)
 		(filter  #(not (s/includes? % "mxnet_version")))))
 
-(deftest mnist-two-epochs-test
+#_(deftest mnist-two-epochs-test
   (do
     (mnist/start [(context/cpu)] 2)
     (is (=
