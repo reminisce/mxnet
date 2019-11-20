@@ -99,8 +99,8 @@ using std::is_integral;
 
 #define MXNET_BINARY_LOGIC_OP_NC(name, expr) \
   struct name : public mxnet_op::tunable  { \
-    template<typename DType> \
-    MSHADOW_XINLINE static bool Map(DType a, DType b) { \
+    template<typename DType1, typename DType2> \
+    MSHADOW_XINLINE static bool Map(DType1 a, DType2 b) { \
       return (expr); \
     } \
   }

@@ -190,11 +190,11 @@ namespace mxnet_op {
 template<int ndim, typename OP>
 struct binary_broadcast_kernel {
   /*! \brief Map function for binary_broadcast_kernel */
-  template<typename IType, typename DType>
+  template<typename IType1, typename IType2, typename OType>
   MSHADOW_XINLINE static void Map(index_t base, index_t length, OpReqType req,
                                   const Shape <ndim> &lstride, const Shape <ndim> &rstride,
-                                  const Shape <ndim> &oshape, IType *lhs, IType *rhs,
-                                  DType *out) {
+                                  const Shape <ndim> &oshape, IType1 *lhs, IType2 *rhs,
+                                  OType *out) {
     Shape <ndim> coord = unravel(base, oshape);
     auto lidx = static_cast<index_t>(dot(coord, lstride));
     auto ridx = static_cast<index_t>(dot(coord, rstride));
@@ -376,16 +376,18 @@ void BinaryBroadcastComputeLogic(const nnvm::NodeAttrs& attrs,
   } else {
     if (req[0] != kNullOp) {
       mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
-      MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[0].type_flag_, DType, {
+      MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[0].type_flag_, DType1, {
+        MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[1].type_flag_, DType2, {
           BROADCAST_NDIM_SWITCH(ndim, NDim, {
             mshadow::Shape<NDim> oshape = new_oshape.get<NDim>();
             mshadow::Shape<NDim> lstride = mxnet_op::calc_stride(new_lshape.get<NDim>());
             mshadow::Shape<NDim> rstride = mxnet_op::calc_stride(new_rshape.get<NDim>());
             mxnet_op::Kernel<mxnet_op::binary_broadcast_kernel<NDim, OP>, xpu>::
             template LaunchEx(s, new_oshape.Size(), req[0], lstride, rstride, oshape,
-                              inputs[0].dptr<DType>(), inputs[1].dptr<DType>(),
+                              inputs[0].dptr<DType1>(), inputs[1].dptr<DType2>(),
                               outputs[0].dptr<bool>());
           });
+        });
       });
     }
   }

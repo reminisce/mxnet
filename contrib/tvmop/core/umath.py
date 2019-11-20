@@ -28,9 +28,9 @@ _bin_logic_op_map = {
 }
 
 
-def _compute_binary_logic(op, dtype, ndim):
-    a = tvm.placeholder([tvm.var() for _ in range(ndim)], dtype=dtype, name='a')
-    b = tvm.placeholder([tvm.var() for _ in range(ndim)], dtype=dtype, name='b')
+def _compute_binary_logic(op, dtype1, dtype2, ndim):
+    a = tvm.placeholder([tvm.var() for _ in range(ndim)], dtype=dtype1, name='a')
+    b = tvm.placeholder([tvm.var() for _ in range(ndim)], dtype=dtype2, name='b')
     c = tvm.compute([tvm.var() for _ in range(ndim)],
                     lambda *idx: _bin_logic_op_map[op](a, b, *idx), name='c')
     s = tvm.create_schedule(c.op)

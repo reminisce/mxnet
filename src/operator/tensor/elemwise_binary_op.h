@@ -511,15 +511,16 @@ class ElemwiseBinaryOp : public OpBase {
       CHECK_EQ(inputs.size(), 2U);
       CHECK_EQ(outputs.size(), 1U);
       MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
-        MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[0].type_flag_, DType, {
-            const size_t size = (minthree(outputs[0].Size(), inputs[0].Size(), inputs[1].Size())
-            + DataType<DType>::kLanes - 1) / DataType<DType>::kLanes;
+        MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[0].type_flag_, DType1, {
+          MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[1].type_flag_, DType2, {
+            const size_t size = outputs[0].Size();
             if (size != 0) {
               Kernel<mxnet_op::op_with_req<OP, Req>, xpu>::Launch(s, size,
                                                                   outputs[0].dptr<bool>(),
-                                                                  inputs[0].dptr<DType>(),
-                                                                  inputs[1].dptr<DType>());
+                                                                  inputs[0].dptr<DType1>(),
+                                                                  inputs[1].dptr<DType2>());
             }
+          });
         });
       });
     }
