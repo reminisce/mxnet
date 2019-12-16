@@ -60,6 +60,10 @@ ifndef LLVM_PATH
 	LLVM_PATH = $(TVM_PATH)/build/llvm
 endif
 
+ifndef PYBIND11_PATH
+	PYBIND11_PATH = $(TPARTYDIR)/pybind11
+endif
+
 ifneq ($(USE_OPENMP), 1)
 	export NO_OPENMP = 1
 endif
@@ -108,6 +112,13 @@ else
 endif
 CFLAGS += -I$(TPARTYDIR)/mshadow/ -I$(TPARTYDIR)/dmlc-core/include -fPIC -I$(NNVM_PATH)/include -I$(DLPACK_PATH)/include -I$(TPARTYDIR)/tvm/include -Iinclude $(MSHADOW_CFLAGS)
 LDFLAGS = -pthread -ldl $(MSHADOW_LDFLAGS) $(DMLC_LDFLAGS)
+
+ifeq ($(USE_PYBIND11), 1)
+	CFLAGS += -I$(TPARTYDIR)/pybind11/include
+  CFLAGS += -I$(PYTHON_HEADER_PATH)
+	CFLAGS += -DMXNET_USE_PYBIND11=1
+	LDFLAGS += -L$(PYTHON_LIB_PATH)
+endif
 
 # please note that when you enable this, you might run into an linker not being able to work properly due to large code injection.
 # you can find more information here https://github.com/apache/incubator-mxnet/issues/15971
@@ -554,6 +565,9 @@ ALLX_DEP= $(ALL_DEP)
 build/src/%.o: src/%.cc | mkldnn
 	@mkdir -p $(@D)
 	$(CXX) -std=c++11 -c $(CFLAGS) -MMD -c $< -o $@
+
+example: src/c_api/pybind_api/example.cc
+	g++ -std=c++11 -shared  -fPIC -o src/c_api/pybind_api/example`python3-config --extension-suffix` `python3 -m pybind11 --includes` src/c_api/pybind_api/example.cc -DMSHADOW_FORCE_STREAM -Wall -Wsign-compare -DDMLC_MODERN_THREAD_LOCAL=0 -O3 -DNDEBUG=1 -I/home/ubuntu/unison/mxnet3/cpu/3rdparty/mshadow/ -I/home/ubuntu/unison/mxnet3/cpu/3rdparty/dmlc-core/include -fPIC -I/home/ubuntu/unison/mxnet3/cpu/3rdparty/tvm/nnvm/include -I/home/ubuntu/unison/mxnet3/cpu/3rdparty/dlpack/include -I/home/ubuntu/unison/mxnet3/cpu/3rdparty/tvm/include -Iinclude -funroll-loops -Wno-unused-parameter -Wno-unknown-pragmas -Wno-unused-local-typedefs -msse3 -mf16c -DMSHADOW_USE_CUDA=0 -DMSHADOW_USE_CBLAS=1 -DMSHADOW_USE_MKL=0 -DMSHADOW_RABIT_PS=0 -DMSHADOW_DIST_PS=0 -DMSHADOW_USE_PASCAL=0 -DMXNET_USE_OPENCV=0 -fopenmp -DMXNET_USE_OPENMP=1 -DMXNET_USE_OPERATOR_TUNING=1 -DMSHADOW_INT64_TENSOR_SIZE=0 -DMXNET_USE_LAPACK -DMXNET_USE_BLAS_OPEN=1  -I/usr/include/openblas -DMXNET_USE_NCCL=0 -DMXNET_USE_LIBJPEG_TURBO=0 -MMD $(LDFLAGS) -Wl,${WHOLE_ARCH} $(filter %libnnvm.a, $^) -Wl,${NO_WHOLE_ARCH} -L/home/ubuntu/unison/mxnet3/cpu/lib -lmxnet
 
 build/src/%_gpu.o: src/%.cu | mkldnn
 	@mkdir -p $(@D)

@@ -26,3 +26,6 @@
 [submodule "3rdparty/nvidia_cub"]
 	path = 3rdparty/nvidia_cub
 	url = https://github.com/NVlabs/cub.git
+[submodule "3rdparty/pybind11"]
+	path = 3rdparty/pybind11
+	url = https://github.com/pybind/pybind11.git
