@@ -58,15 +58,15 @@ class SliceObj : public Object {
 
 class Slice : public ObjectRef {
  public:
-  explicit Slice(int64_t start, int64_t stop, int64_t step,
-                 ObjectPtr<SliceObj>&& data = make_object<SliceObj>()) {
+  explicit inline Slice(int64_t start, int64_t stop, int64_t step,
+                        ObjectPtr<SliceObj>&& data = make_object<SliceObj>()) {
     data->start = start;
     data->stop = stop;
     data->step = step;
     data_ = std::move(data);
   }
 
-  explicit Slice(int64_t stop)
+  explicit inline Slice(int64_t stop)
       : Slice(kNoneValue, stop, kNoneValue) {
   }
 
@@ -76,9 +76,27 @@ class Slice : public ObjectRef {
   MXNET_DEFINE_OBJECT_REF_METHODS(Slice, ObjectRef, SliceObj);
 };
 
-int64_t SliceNoneValue() {
+int64_t inline SliceNoneValue() {
   return Slice::kNoneValue;
 }
+
+class IntegerObj: public Object {
+public:
+  int64_t value;
+  static constexpr const uint32_t _type_index = TypeIndex::kInteger;
+  static constexpr const char* _type_key = "vm.Integer";
+  MXNET_DECLARE_FINAL_OBJECT_INFO(IntegerObj, Object);
+};
+
+class Integer: public ObjectRef {
+public:
+  explicit Integer(int64_t value,
+                   ObjectPtr<IntegerObj>&& data = make_object<IntegerObj>()) {
+    data->value = value;
+    data_ = std::move(data);
+  }
+  MXNET_DEFINE_OBJECT_REF_METHODS(Integer, ObjectRef, IntegerObj);
+};
 
 //  Helper functions for fast FFI implementations
 /*!
@@ -89,16 +107,19 @@ class ADTBuilder {
   /*! \brief default constructor */
   ADTBuilder() = default;
 
-  explicit ADTBuilder(uint32_t tag, uint32_t size)
+  explicit inline ADTBuilder(uint32_t tag, uint32_t size)
       : data_(make_inplace_array_object<ADTObj, ObjectRef>(size)) {
+    data_->size = size;
+    std::cout << "ADTBuilder::size = " << size << std::endl;
+    std::cout << "ADTBuilder::data_->size = " << data_->size << std::endl;
   }
 
   template <typename... Args>
-  void EmplaceInit(size_t idx, Args&&... args) {
+  void inline EmplaceInit(size_t idx, Args&&... args) {
     data_->EmplaceInit(idx, std::forward<Args>(args)...);
   }
 
-  ADT Get() {
+  ADT inline Get() {
     return ADT(std::move(data_));
   }
 
