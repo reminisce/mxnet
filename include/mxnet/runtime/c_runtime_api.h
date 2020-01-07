@@ -133,11 +133,11 @@ typedef void* MXNetObjectHandle;
  *   to free these handles.
  */
 // MXNET_DLL int MXNetFuncCall(MXNetFunctionHandle func,
-//                           MXNetValue* arg_values,
-//                           int* type_codes,
-//                           int num_args,
-//                           MXNetValue* ret_val,
-//                           int* ret_type_code);
+//                             MXNetValue* arg_values,
+//                             int* type_codes,
+//                             int num_args,
+//                             MXNetValue* ret_val,
+//                             int* ret_type_code);
 
 /*!
  * \brief Get a global function.
