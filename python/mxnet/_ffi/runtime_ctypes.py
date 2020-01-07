@@ -14,16 +14,17 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-"""Registering ops in mxnet.numpy for imperative programming."""
-
+"""Common runtime ctypes."""
+# pylint: disable=invalid-name
 from __future__ import absolute_import
 
-from ..base import _init_np_op_module
-from ..ndarray.register import _make_ndarray_function
-from .._ffi.function import _init_api
+import ctypes
+import json
+import numpy as np
 
-_init_np_op_module(root_module_name='mxnet', np_module_name='numpy',
-                   mx_module_name=None, make_op_func=_make_ndarray_function)
 
-_init_api("np", "mxnet.numpy")
+class TVMByteArray(ctypes.Structure):
+    """Temp data structure for byte array."""
+    _fields_ = [("data", ctypes.POINTER(ctypes.c_byte)),
+                ("size", ctypes.c_size_t)]
+

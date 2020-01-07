@@ -34,9 +34,9 @@ void MXTestADT(size_t ptr) {
 
 namespace mxnet {
 
-MXNET_REGISTER_API("test")
+MXNET_REGISTER_API("np.zeros1")
 .set_body([](runtime::MXNetArgs args, runtime::MXNetRetValue* ret) {
-  std::cout << "inside test" << std::endl;
+  
 });
 
 }  // namespace mxnet

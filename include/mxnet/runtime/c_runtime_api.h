@@ -111,6 +111,12 @@ typedef void* MXNetFunctionHandle;
 /*! \brief Handle to Object. */
 typedef void* MXNetObjectHandle;
 
+/*!
+ * \brief Free the function when it is no longer needed.
+ * \param func The function handle
+ * \return 0 when success, -1 when failure happens
+ */
+MXNET_DLL int MXNetFuncFree(MXNetFunctionHandle func);
 
 /*!
  * \brief Call a Packed TVM Function.
@@ -132,12 +138,12 @@ typedef void* MXNetObjectHandle;
  *   The front-end need to call free function (e.g. TVMFuncFree)
  *   to free these handles.
  */
-// MXNET_DLL int MXNetFuncCall(MXNetFunctionHandle func,
-//                             MXNetValue* arg_values,
-//                             int* type_codes,
-//                             int num_args,
-//                             MXNetValue* ret_val,
-//                             int* ret_type_code);
+MXNET_DLL int MXNetFuncCall(MXNetFunctionHandle func,
+                            MXNetValue* arg_values,
+                            int* type_codes,
+                            int num_args,
+                            MXNetValue* ret_val,
+                            int* ret_type_code);
 
 /*!
  * \brief Get a global function.
@@ -148,7 +154,7 @@ typedef void* MXNetObjectHandle;
  * \note The function handle of global function is managed by TVM runtime,
  *  So TVMFuncFree is should not be called when it get deleted.
  */
-// MXNET_DLL int MXNetFuncGetGlobal(const char* name, MXNetFunctionHandle* out);
+MXNET_DLL int MXNetFuncGetGlobal(const char* name, MXNetFunctionHandle* out);
 
 /*!
  * \brief List all the globally registered function name
@@ -156,8 +162,8 @@ typedef void* MXNetObjectHandle;
  * \param out_array The array of function names.
  * \return 0 when success, -1 when failure happens
  */
-// MXNET_DLL int MXNetFuncListGlobalNames(int* out_size,
-//                                      const char*** out_array);
+MXNET_DLL int MXNetFuncListGlobalNames(int* out_size,
+                                       const char*** out_array);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -123,14 +123,6 @@ struct MXNetFuncThreadLocalEntry {
 /*! \brief Thread local store that can be used to hold return values. */
 typedef dmlc::ThreadLocalStore<MXNetFuncThreadLocalEntry> MXNetFuncThreadLocalStore;
 
-int MXNetFuncRegisterGlobal(
-    const char* name, MXNetFunctionHandle f, int override) {
-  API_BEGIN();
-  mxnet::runtime::Registry::Register(name, override != 0)
-      .set_body(*static_cast<mxnet::runtime::PackedFunc*>(f));
-  API_END();
-}
-
 int MXNetFuncGetGlobal(const char* name, MXNetFunctionHandle* out) {
   API_BEGIN();
   const mxnet::runtime::PackedFunc* fp =
