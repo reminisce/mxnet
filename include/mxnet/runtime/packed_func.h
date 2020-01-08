@@ -681,6 +681,10 @@ class MXNetRetValue : public MXNetPODValue_ {
     this->Assign(other);
     return *this;
   }
+  MXNetRetValue& operator=(const ::mxnet::NDArray* value) {
+    this->SwitchToPOD(kNDArrayHandle);
+    value_.v_handle = reinterpret_cast<void*>(value);
+  }
   template<typename T,
            typename = typename std::enable_if<
              extension_type_info<T>::code != 0>::type>
@@ -746,7 +750,7 @@ class MXNetRetValue : public MXNetPODValue_ {
           SwitchToPOD(other.type_code());
           value_ = other.value_;
         } else {
-          LOG(FATAL) << "Header only mode do not support ext type";
+          LOG(FATAL) << "Does not support ext type";
         }
         break;
       }
@@ -791,7 +795,7 @@ class MXNetRetValue : public MXNetPODValue_ {
       }
     }
     if (type_code_ > kExtBegin) {
-      LOG(FATAL) << "Header only mode do not support ext type";
+      LOG(FATAL) << "Does not support ext type";
     }
     type_code_ = kNull;
   }
