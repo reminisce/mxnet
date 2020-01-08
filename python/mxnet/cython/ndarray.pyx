@@ -20,6 +20,7 @@ from __future__ import absolute_import as _abs
 import sys as _sys
 import ctypes as _ctypes
 import numpy as np
+import ndarray
 from ..ndarray_doc import _build_doc
 from libc.stdint cimport uint32_t, int64_t
 from ..base import _LIB
@@ -60,9 +61,7 @@ cdef class NDArrayBase:
         CALL(MXNDArrayFree(self.chandle))
 
     def __reduce__(self):
-        return (_ndarray_cls, (None,), self.__getstate__())
-
-import ndarray
+        return (ndarray._ndarray_cls, (None,), self.__getstate__())
 
 def _set_ndarray_class(cls):
     ndarray._set_ndarray_class(cls)
@@ -77,7 +76,7 @@ def _monitor_callback_wrapper(callback):
 
 cdef NewArray(NDArrayHandle handle, int stype=-1, int is_np_array=0):
     """Create a new array given handle"""
-    create_array_fn = _np_ndarray_cls if is_np_array else _ndarray_cls
+    create_array_fn = ndarray._np_ndarray_cls if is_np_array else ndarray._ndarray_cls
     return create_array_fn(_ctypes.cast(<unsigned long long>handle, _ctypes.c_void_p), stype=stype)
 
 
