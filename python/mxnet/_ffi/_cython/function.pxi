@@ -69,6 +69,8 @@ cdef inline object make_ret(MXNetValue value, int tcode):
         return py_str(value.v_str)
     elif tcode == kHandle:
         return ctypes_handle(value.v_handle)
+    elif tcode == kNDArrayHandle:
+        return c_make_array(value.v_handle)
     raise ValueError("Unhandled type code %d" % tcode)
 
 

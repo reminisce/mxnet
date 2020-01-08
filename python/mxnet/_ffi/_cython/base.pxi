@@ -37,6 +37,7 @@ cdef enum MXNetTypeCode:
     kStr = 11
     kBytes = 12
     kNDArrayContainer = 13
+    kNDArrayHandle = 14
     kExtBegin = 15
 
 cdef extern from "mxnet/runtime/c_runtime_api.h":

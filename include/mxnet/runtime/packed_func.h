@@ -29,6 +29,7 @@
 #include <mxnet/runtime/c_runtime_api.h>
 #include <mxnet/runtime/object.h>
 #include <mxnet/runtime/ndarray.h>
+#include <mxnet/ndarray.h>
 #include <functional>
 #include <tuple>
 #include <vector>
@@ -681,9 +682,10 @@ class MXNetRetValue : public MXNetPODValue_ {
     this->Assign(other);
     return *this;
   }
-  MXNetRetValue& operator=(const ::mxnet::NDArray* value) {
+  MXNetRetValue& operator=(::mxnet::NDArray* value) {
     this->SwitchToPOD(kNDArrayHandle);
     value_.v_handle = reinterpret_cast<void*>(value);
+    return *this;
   }
   template<typename T,
            typename = typename std::enable_if<

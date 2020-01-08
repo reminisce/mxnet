@@ -62,18 +62,13 @@ cdef class NDArrayBase:
     def __reduce__(self):
         return (_ndarray_cls, (None,), self.__getstate__())
 
-
-_ndarray_cls = None
-_np_ndarray_cls = None
+import ndarray
 
 def _set_ndarray_class(cls):
-    global _ndarray_cls
-    _ndarray_cls = cls
-
+    ndarray._set_ndarray_class(cls)
 
 def _set_np_ndarray_class(cls):
-    global _np_ndarray_cls
-    _np_ndarray_cls = cls
+    ndarray._set_np_ndarray_class(cls)
 
 def _monitor_callback_wrapper(callback):
     def callback_handle(name, opr_name, arr, _):
