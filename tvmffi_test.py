@@ -1,5 +1,9 @@
-import mxnet as mxnet
-from mxnet.base import _LIB
-from mxnet._cy3.test import testADT
+import mxnet as mx
+from mxnet import np
 
-testADT((1, 2, 3))
+print("tvm ffi...")
+a = np.zeros1((3, 4))
+print(a)
+print("legacy ffi...")
+a = np.zeros((3, 4))
+print(a)
