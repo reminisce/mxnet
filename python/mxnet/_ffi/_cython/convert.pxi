@@ -48,7 +48,6 @@ cdef extern from "mxnet/runtime/memory.h" namespace "mxnet::runtime":
 
 
 cdef inline ADT convert_tuple(tuple src_tuple) except +:
-    print("convert_tuple")
     cdef uint32_t size = len(src_tuple)
     cdef ADTBuilder builder = ADTBuilder(0, size)
 

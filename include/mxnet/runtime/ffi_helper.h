@@ -110,8 +110,6 @@ class ADTBuilder {
   explicit inline ADTBuilder(uint32_t tag, uint32_t size)
       : data_(make_inplace_array_object<ADTObj, ObjectRef>(size)) {
     data_->size = size;
-    std::cout << "ADTBuilder::size = " << size << std::endl;
-    std::cout << "ADTBuilder::data_->size = " << data_->size << std::endl;
   }
 
   template <typename... Args>

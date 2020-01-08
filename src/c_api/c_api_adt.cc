@@ -44,12 +44,12 @@ MXNET_REGISTER_API("np.zeros1")
   const nnvm::Op* op = Op::Get("_npi_zeros");
   const runtime::ObjectRef ref = args[0].operator runtime::ObjectRef();
   const runtime::ADTObj* obj = ref.as<runtime::ADTObj>();
-  std::cout << "size = " << obj->size << std::endl;
-  for (uint32_t i = 0; i < obj->size; ++i) {
-    int64_t value = obj->operator[](i).as<::mxnet::runtime::IntegerObj>()->value;
-    std::cout << value << " ";
-  }
-  std::cout << std::endl;
+  // std::cout << "size = " << obj->size << std::endl;
+  // for (uint32_t i = 0; i < obj->size; ++i) {
+  //   int64_t value = obj->operator[](i).as<::mxnet::runtime::IntegerObj>()->value;
+  //   std::cout << value << " ";
+  // }
+  // std::cout << std::endl;
   mxnet::op::InitOpParam param;
   param.shape = TShape(obj->size, 0);
   for (uint32_t i = 0; i < obj->size; ++i) {
@@ -72,6 +72,11 @@ MXNET_REGISTER_API("np.zeros1")
   auto state = mxnet::Imperative::Get()->Invoke(Context::CPU(), attrs, ndinputs, ndoutputs);
   
   *ret = reinterpret_cast<mxnet::NDArray*>(ndoutputs[0]);
+});
+
+MXNET_REGISTER_API("np.zeros0")
+.set_body([](runtime::MXNetArgs args, runtime::MXNetRetValue* ret) {
+  *ret = static_cast<int64_t>(0xdeadbeaf);
 });
 
 }  // namespace mxnet

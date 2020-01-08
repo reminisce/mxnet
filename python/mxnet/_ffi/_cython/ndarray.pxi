@@ -10,6 +10,6 @@ from ...numpy import ndarray
 
 cdef c_make_array(void* handle):
     create_array_fn = _np_ndarray_cls
-    print(create_array_fn)
+    # print(create_array_fn)
     # return return ndarray(handle=None if value[0].v_handle == 0 else ctypes.cast(value[0].v_handle, NDArrayHandle))
     return ndarray(handle=ctypes.cast(<unsigned long long>handle, ctypes.c_void_p))
