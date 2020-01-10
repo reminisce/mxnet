@@ -41,7 +41,7 @@ namespace mxnet {
 
 MXNET_REGISTER_API("np.zeros1")
 .set_body([](runtime::MXNetArgs args, runtime::MXNetRetValue* ret) {
-  const nnvm::Op* op = Op::Get("_npi_zeros");
+  static const nnvm::Op* op = Op::Get("_npi_zeros");
   const runtime::ObjectRef ref = args[0].operator runtime::ObjectRef();
   const runtime::ADTObj* obj = ref.as<runtime::ADTObj>();
   // std::cout << "size = " << obj->size << std::endl;

@@ -29,23 +29,27 @@ include "./base.pyi"
 cdef class NDArrayBase:
     """Symbol is symbolic graph."""
     # handle for symbolic operator.
-    cdef NDArrayHandle chandle
+    # cdef NDArrayHandle chandle
+    cdef unsigned long long chandle
     cdef int cwritable
 
     cdef _set_handle(self, handle):
-        cdef unsigned long long ptr
-        if handle is None:
-            self.chandle = NULL
-        else:
-            ptr = handle.value
-            self.chandle = <SymbolHandle>(ptr)
+        self.chandle = handle
+        # cdef unsigned long long ptr
+        # if handle is None:
+        #     self.chandle = NULL
+        # else:
+        #     ptr = handle.value
+        #     self.chandle = <SymbolHandle>(ptr)
 
     property handle:
         def __get__(self):
-            if self.chandle == NULL:
-                return None
-            else:
-                return _ctypes.cast(<unsigned long long>self.chandle, _ctypes.c_void_p)
+            #return self.chandle
+            # if self.chandle == NULL:
+            #     return None
+            # else:
+            #     return _ctypes.cast(<unsigned long long>self.chandle, _ctypes.c_void_p)
+            return _ctypes.cast(self.chandle, _ctypes.c_void_p)
         def __set__(self, value):
             self._set_handle(value)
     property writable:
@@ -57,7 +61,8 @@ cdef class NDArrayBase:
         self.cwritable = writable
 
     def __dealloc__(self):
-        CALL(MXNDArrayFree(self.chandle))
+        #CALL(MXNDArrayFree(self.chandle))
+        CALL(MXNDArrayFree(<void*>(self.chandle)))
 
     def __reduce__(self):
         return (_ndarray_cls, (None,), self.__getstate__())
@@ -142,16 +147,16 @@ cdef class CachedOp:
         cdef const int* p_output_stypes
 
         for i in args:
-            ndvars.push_back((<NDArrayBase>i).chandle)
+            ndvars.push_back(<void*>((<NDArrayBase>i).chandle))
 
         original_output = None
         if out is not None:
             original_output = out
             if isinstance(out, NDArrayBase):
-                output_vars.push_back((<NDArrayBase>out).chandle)
+                output_vars.push_back(<void*>((<NDArrayBase>out).chandle))
             else:
                 for i in out:
-                    output_vars.push_back((<NDArrayBase>i).chandle)
+                    output_vars.push_back(<void*>((<NDArrayBase>i).chandle))
 
         num_output = output_vars.size()
         if output_vars.size() == 0:
@@ -198,7 +203,7 @@ def _imperative_invoke(handle, ndargs, keys, vals, out, is_np_op=0, output_is_li
     cdef const int* p_output_stypes
 
     for i in ndargs:
-        ndvars.push_back((<NDArrayBase>i).chandle)
+        ndvars.push_back(<void*>((<NDArrayBase>i).chandle))
     for i in keys:
         ckeys.push_back(c_str(i))
     for i in vals:
@@ -208,10 +213,10 @@ def _imperative_invoke(handle, ndargs, keys, vals, out, is_np_op=0, output_is_li
     if out is not None:
         original_output = out
         if isinstance(out, NDArrayBase):
-            output_vars.push_back((<NDArrayBase>out).chandle)
+            output_vars.push_back(<void*>((<NDArrayBase>out).chandle))
         else:
             for i in out:
-                output_vars.push_back((<NDArrayBase>i).chandle)
+                output_vars.push_back(<void*>((<NDArrayBase>i).chandle))
 
     num_output = output_vars.size()
     if output_vars.size() == 0:
