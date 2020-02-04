@@ -133,6 +133,7 @@ __all__ = [
     'unpackbits',
     'unwrap',
     'vander',
+    'matmul',
 ]
 
 allclose = onp.allclose
@@ -251,3 +252,6 @@ union1d = onp.union1d
 unpackbits = onp.unpackbits
 unwrap = onp.unwrap
 vander = onp.vander
+
+# TODO(junwu): delete this after https://github.com/apache/incubator-mxnet/pull/16990 is merged
+matmul = onp.matmul
