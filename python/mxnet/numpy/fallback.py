@@ -110,6 +110,7 @@ __all__ = [
     'ravel_multi_index',
     'real',
     'real_if_close',
+    'result_type',
     'rollaxis',
     'roots',
     'round',
@@ -217,7 +218,6 @@ polyint = onp.polyint
 polymul = onp.polymul
 polysub = onp.polysub
 positive = onp.positive
-product = onp.product
 ppmt = onp.ppmt
 promote_types = onp.promote_types
 ptp = onp.ptp
@@ -229,6 +229,7 @@ rate = onp.rate
 ravel_multi_index = onp.ravel_multi_index
 real = onp.real
 real_if_close = onp.real_if_close
+result_type = onp.result_type
 rollaxis = onp.rollaxis
 roots = onp.roots
 round = onp.round
@@ -255,3 +256,5 @@ vander = onp.vander
 
 # TODO(junwu): delete this after https://github.com/apache/incubator-mxnet/pull/16990 is merged
 matmul = onp.matmul
+# TODO(junwu): In pr review, delete this after the pr is merged.
+product = onp.product
